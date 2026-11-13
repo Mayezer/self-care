@@ -1,0 +1,51 @@
+<article class="page-width page-content help">
+  <header class="intro">
+    <p class="eyebrow">Guias e FAQs</p>
+    <h1 tabindex="-1">{{ guide.title }}</h1>
+    <p>{{ guide.summary }}</p>
+  </header>
+
+  <div class="help-topics">
+    <div class="card guide-body">
+      @for (paragraph of guide.paragraphs; track paragraph) {
+        <p>{{ paragraph }}</p>
+      }
+      @if (guide.steps; as steps) {
+        <ol>
+          @for (step of steps; track step) {
+            <li>{{ step }}</li>
+          }
+        </ol>
+      }
+      @if (showCurlChart) {
+        @for (group of curlGroups; track group.value) {
+          <section class="curl-guide-group" [attr.aria-labelledby]="'curl-guide-' + group.value">
+            <h2 [id]="'curl-guide-' + group.value">{{ group.label }}</h2>
+            <div class="curl-guide-grid">
+              @for (subtype of group.subtypes; track subtype.code) {
+                <figure>
+                  <svg aria-hidden="true" focusable="false" viewBox="0 0 48 26">
+                    <path [attr.d]="subtype.path" [attr.stroke-width]="subtype.width"
+                          fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                  <figcaption><strong>{{ subtype.code }}</strong> {{ subtype.caption }}</figcaption>
+                </figure>
+              }
+            </div>
+          </section>
+        }
+      }
+    </div>
+
+    <footer class="card" aria-labelledby="guide-sources">
+      <h2 id="guide-sources">Fontes e revisão</h2>
+      <p>Revisão editorial por Codex em <time datetime="2026-11-13">13/11/2026</time>.</p>
+      <ul>
+        @for (source of guide.sources; track source.url) {
+          <li><a [href]="source.url">{{ source.title }}</a></li>
+        }
+      </ul>
+    </footer>
+  </div>
+  <a class="agenda-add guide-back" routerLink="/ajuda" fragment="guias">Voltar aos guias da Ajuda</a>
+</article>

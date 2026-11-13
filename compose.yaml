@@ -1,0 +1,125 @@
+name: autocuidado-local
+
+x-api-image: &api-image
+  image: ${COMPOSE_PROJECT_NAME}-api
+  build: ./backend
+
+x-postgres-image: &postgres-image
+  image: ${COMPOSE_PROJECT_NAME}-db
+  build:
+    context: ./backend
+    dockerfile: Dockerfile.postgres
+
+services:
+  web:
+    build:
+      context: ./frontend
+      args:
+        PUBLIC_SITE_ORIGIN: ${PUBLIC_SITE_ORIGIN:-}
+        PUBLIC_SITE_GUIDES: ${PUBLIC_SITE_GUIDES:-false}
+    depends_on:
+      api:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "127.0.0.1:${LOCAL_WEB_PORT:-4222}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  api:
+    <<: *api-image
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${LOCAL_DB_NAME:-autocuidado_local}
+      SPRING_DATASOURCE_USERNAME: autocuidado_runtime
+      SPRING_DATASOURCE_PASSWORD: ${LOCAL_DB_RUNTIME_PASSWORD:?Defina LOCAL_DB_RUNTIME_PASSWORD no arquivo .env}
+      SPRING_FLYWAY_ENABLED: "false"
+      SPRING_MAIL_HOST: mail
+      SPRING_MAIL_PORT: "1025"
+      APP_AUTH_EMAIL_FROM: autocuidado@example.invalid
+      APP_AUTH_MFA_KEY: ${LOCAL_AUTH_MFA_KEY:-}
+      APP_HAIR_PROFILE_ENABLED: ${LOCAL_HAIR_PROFILE_ENABLED:-true}
+      APP_HAIR_PRODUCTS_ENABLED: ${LOCAL_HAIR_PRODUCTS_ENABLED:-false}
+      APP_HELP_GUIDES_ENABLED: ${LOCAL_HELP_GUIDES_ENABLED:-true}
+      APP_FORUM_ENABLED: ${LOCAL_FORUM_ENABLED:-false}
+      APP_AGENDA_CARE_STREAK_ENABLED: ${LOCAL_CARE_STREAK_ENABLED:-true}
+      APP_AGENDA_DAILY_MESSAGE_ENABLED: ${LOCAL_DAILY_MESSAGE_ENABLED:-true}
+      APP_AGENDA_REMINDERS_ENABLED: ${LOCAL_AGENDA_REMINDERS_ENABLED:-true}
+      APP_AGENDA_WEB_PUSH_ENABLED: ${LOCAL_WEB_PUSH_ENABLED:-false}
+      APP_AGENDA_WEB_PUSH_PUBLIC_KEY: ${LOCAL_WEB_PUSH_PUBLIC_KEY:-}
+      APP_AGENDA_WEB_PUSH_PRIVATE_KEY: ${LOCAL_WEB_PUSH_PRIVATE_KEY:-}
+      APP_BILLING_ENABLED: ${LOCAL_BILLING_ENABLED:-false}
+      APP_BILLING_STRIPE_SECRET_KEY: ${LOCAL_BILLING_STRIPE_SECRET_KEY:-}
+      APP_BILLING_STRIPE_PRICE_ID: ${LOCAL_BILLING_STRIPE_PRICE_ID:-}
+      APP_BILLING_STRIPE_WEBHOOK_SECRET: ${LOCAL_BILLING_STRIPE_WEBHOOK_SECRET:-}
+      APP_BILLING_RETURN_URL: ${LOCAL_BILLING_RETURN_URL:-}
+      APP_HAIR_DIARY_ENABLED: ${LOCAL_HAIR_DIARY_ENABLED:-false}
+    ports:
+      - "127.0.0.1:${LOCAL_API_PORT:-8102}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/api/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 30s
+
+  db:
+    <<: *postgres-image
+    environment:
+      POSTGRES_DB: ${LOCAL_DB_NAME:-autocuidado_local}
+      POSTGRES_USER: ${LOCAL_DB_USER:-autocuidado}
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:?Defina LOCAL_DB_PASSWORD no arquivo .env}
+    ports:
+      - "127.0.0.1:${LOCAL_DB_PORT:-56422}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+      start_period: 10s
+
+  db-roles:
+    <<: *postgres-image
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGDATABASE: ${LOCAL_DB_NAME:-autocuidado_local}
+      PGUSER: ${LOCAL_DB_USER:-autocuidado}
+      PGPASSWORD: ${LOCAL_DB_PASSWORD:?Defina LOCAL_DB_PASSWORD no arquivo .env}
+      LOCAL_DB_RUNTIME_PASSWORD: ${LOCAL_DB_RUNTIME_PASSWORD:?Defina LOCAL_DB_RUNTIME_PASSWORD no arquivo .env}
+      LOCAL_DB_MIGRATION_PASSWORD: ${LOCAL_DB_MIGRATION_PASSWORD:?Defina LOCAL_DB_MIGRATION_PASSWORD no arquivo .env}
+    volumes:
+      - ./backend/db-roles.sql:/db-roles.sql:ro
+    command: ["psql", "--no-psqlrc", "--quiet", "--set=ON_ERROR_STOP=1", "--file=/db-roles.sql"]
+
+  migrate:
+    <<: *api-image
+    depends_on:
+      db-roles:
+        condition: service_completed_successfully
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${LOCAL_DB_NAME:-autocuidado_local}
+      SPRING_DATASOURCE_USERNAME: autocuidado_migration
+      SPRING_DATASOURCE_PASSWORD: ${LOCAL_DB_MIGRATION_PASSWORD:?Defina LOCAL_DB_MIGRATION_PASSWORD no arquivo .env}
+    command: ["java", "-jar", "autocuidado.jar", "--migrate"]
+
+  mail:
+    image: axllent/mailpit:v1.33.1
+    profiles: [mail]
+    ports:
+      - "127.0.0.1:${LOCAL_MAIL_PORT:-8025}:8025"
+
+volumes:
+  postgres-data:

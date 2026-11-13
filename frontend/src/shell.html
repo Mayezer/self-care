@@ -1,0 +1,47 @@
+<a class="skip-link" href="#conteudo" (click)="$event.preventDefault(); content.focus()">Ir para o conteúdo</a>
+<header class="site-header">
+  <div class="page-width header-content" [class.stacked-header]="stacked()" [class.agenda-width]="page() === 'agenda'">
+    <div class="brand">
+      @if (stacked()) {
+        <a class="icon-button back-button" [routerLink]="backLink()"
+           [attr.aria-label]="backLink() === '/historico' ? 'Voltar para o histórico' : 'Voltar para a agenda'">
+          <span class="material-symbol" aria-hidden="true">arrow_back</span>
+        </a>
+      } @else {
+        <span class="editorial-icon material-symbol" aria-hidden="true">spa</span>
+      }
+      <div class="brand-label">
+        @if (!stacked()) { <span>Autocuidado</span> }
+        <strong>{{ pageName() }}</strong>
+      </div>
+    </div>
+    @if (!stacked()) {
+      <nav class="main-nav" aria-label="Navegação principal">
+        @for (tab of tabs; track tab.path) {
+          <a [routerLink]="tab.path" [class.current-link]="activeTab(tab.path)"
+             [attr.aria-current]="activeTab(tab.path) ? (page() === 'cronogramas' ? 'location' : 'page') : null">
+            <span class="material-symbol" aria-hidden="true">{{ tab.icon }}</span>{{ tab.text }}
+          </a>
+        }
+      </nav>
+    }
+    <div class="header-actions">
+      <div class="theme-control">
+        <span class="theme-symbol" aria-hidden="true">{{ theme().icon }}</span>
+        <select #themeSelect aria-label="Tema" (change)="changeTheme(themeSelect.value)">
+          @for (option of themes; track option.value) {
+            <option [value]="option.value" [selected]="theme().value === option.value">{{ option.icon }} {{ option.label }}</option>
+          }
+        </select>
+      </div>
+      <a class="icon-button profile-button" routerLink="/perfil" aria-label="Perfil"
+         [attr.aria-current]="page() === 'perfil' ? 'page' : null">
+        <span class="material-symbol" aria-hidden="true">person</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main #content id="conteudo" [class.stacked-content]="stacked()" tabindex="-1">
+  <router-outlet (activate)="focusPage(content)" />
+</main>

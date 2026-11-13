@@ -1,0 +1,441 @@
+{
+  "anvisa": {
+    "source": "https://dados.anvisa.gov.br/dados/CONSULTAS/PRODUTOS/TA_CONSULTA_COSMETICOS.CSV",
+    "updatedOn": "2026-11-09"
+  },
+  "products": [
+    {
+      "id": "elseve-pure-hialuronico-shampoo-micelar-300",
+      "category": "SHAMPOO",
+      "brand": "Elseve",
+      "name": "Pure Hialurônico Shampoo Micelar Antioleosidade",
+      "presentation": "300 mL",
+      "manufacturerUrl": "https://www.loreal-paris.com.br/elseve/pure-hialuronico/shampoo-micelar-antioleosidade-300ml",
+      "tags": [
+        "OILY_ROOTS"
+      ],
+      "label": {
+        "source": "https://www.loreal-paris.com.br/elseve/pure-hialuronico/shampoo-micelar-antioleosidade-300ml",
+        "area": "Raiz e couro cabeludo",
+        "hairCondition": "Cabelo molhado",
+        "rinse": "RINSE_OFF",
+        "instructions": "Agite o frasco, distribua na raiz com o aplicador, massageie e enxágue.",
+        "warnings": [
+          "Guarde fora do alcance de crianças.",
+          "Em caso de contato com os olhos, lave-os imediatamente com água.",
+          "Evite armazenar em temperatura baixa."
+        ],
+        "compositionSource": "https://www.loreal-paris.com.br/elseve/pure-hialuronico/shampoo-micelar-antioleosidade-300ml"
+      },
+      "review": {
+        "status": "PUBLISHED",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18"
+      },
+      "registry": {
+        "process": "25351084915202577",
+        "legalName": "ELSEVE PURE HIALURÔNICO SHAMPOO MICELAR",
+        "holder": "PROCOSA PRODUTOS DE BELEZA LTDA",
+        "holderCnpj": "33306929000100",
+        "status": "ACTIVE",
+        "validUntil": "2035-05-24",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "dove-hialuron-vit-shampoo-370",
+      "category": "SHAMPOO",
+      "brand": "Dove",
+      "name": "Shampoo Hidratação + Hialuron-Vit",
+      "presentation": "370 mL",
+      "manufacturerUrl": "https://www.dove.com/br/p/shampoo-hidratacao-hialuron-vit-370ml.html/07891150102545",
+      "tags": [
+        "DRYNESS"
+      ],
+      "label": {
+        "source": "https://www.dove.com/br/p/shampoo-hidratacao-hialuron-vit-370ml.html/07891150102545",
+        "area": "Couro cabeludo",
+        "hairCondition": "Cabelo molhado",
+        "rinse": "RINSE_OFF",
+        "instructions": "Massageie o couro cabeludo até formar espuma e enxágue.",
+        "warnings": [],
+        "compositionSource": "https://www.ingredientesunilever.com.br/p/dove-shampoohidratacao-hialuron-vit370ml-2024.html/07891150102545"
+      },
+      "review": {
+        "status": "IN_REVIEW",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18",
+        "reason": "Composição localizada pelo GTIN. Falta conferir as advertências no verso da embalagem."
+      },
+      "registry": {
+        "process": "25351078587202570",
+        "legalName": "DOVE SHAMPOO HIDRATAÇÃO + HIALURON-VIT",
+        "holder": "UNILEVER BRASIL INDUSTRIAL LTDA",
+        "holderCnpj": "01615814000101",
+        "status": "ACTIVE",
+        "validUntil": "2035-05-15",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "elseve-cachos-longos-condicionador-200",
+      "category": "CONDITIONER",
+      "brand": "Elseve",
+      "name": "Cachos Longos dos Sonhos Condicionador Selador",
+      "presentation": "200 mL",
+      "manufacturerUrl": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/condicionador-selador-200ml",
+      "tags": [
+        "CURLY",
+        "DRYNESS",
+        "FRIZZ"
+      ],
+      "label": {
+        "source": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/condicionador-selador-200ml",
+        "area": "Comprimento e pontas",
+        "hairCondition": "Cabelo molhado",
+        "rinse": "RINSE_OFF",
+        "instructions": "Distribua no comprimento e nas pontas. Deixe agir conforme a embalagem e enxágue bem.",
+        "warnings": [
+          "Guarde fora do alcance de crianças.",
+          "Em caso de contato com os olhos, lave-os imediatamente com água."
+        ],
+        "compositionSource": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/condicionador-selador-200ml"
+      },
+      "review": {
+        "status": "PUBLISHED",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18"
+      },
+      "registry": {
+        "process": "25351161978202554",
+        "legalName": "ELSEVE CACHOS LONGOS DOS SONHOS CONDICIONADOR",
+        "holder": "PROCOSA PRODUTOS DE BELEZA LTDA",
+        "holderCnpj": "33306929000100",
+        "status": "ACTIVE",
+        "validUntil": "2035-09-10",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "dove-hialuron-vit-condicionador-600",
+      "category": "CONDITIONER",
+      "brand": "Dove",
+      "name": "Condicionador Hidratação + Hialuron-Vit",
+      "presentation": "600 mL",
+      "manufacturerUrl": "https://www.dove.com/br/p/condicionador-hidratacao-hialuron-vit-600ml.html/07891150102576",
+      "tags": [
+        "DRYNESS",
+        "FINE"
+      ],
+      "label": {
+        "source": "https://www.dove.com/br/p/condicionador-hidratacao-hialuron-vit-600ml.html/07891150102576",
+        "area": "Comprimento e pontas",
+        "hairCondition": "Após a lavagem",
+        "rinse": "RINSE_OFF",
+        "instructions": "Distribua no comprimento e nas pontas, massageie e enxágue bem.",
+        "warnings": []
+      },
+      "review": {
+        "status": "IN_REVIEW",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18",
+        "reason": "A página informa uso e indicação. Falta confirmar composição e advertências da embalagem de 600 mL."
+      },
+      "registry": {
+        "process": "25351130856202516",
+        "legalName": "DOVE CONDICIONADOR HIDRATAÇÃO + HIALURON-VIT",
+        "holder": "UNILEVER BRASIL INDUSTRIAL LTDA",
+        "holderCnpj": "01615814000101",
+        "status": "ACTIVE",
+        "validUntil": "2035-07-29",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "elseve-colorvive-condicionador-200",
+      "category": "CONDITIONER",
+      "brand": "Elseve",
+      "name": "Colorvive Condicionador Proteção da Cor",
+      "presentation": "200 mL",
+      "manufacturerUrl": "https://www.loreal-paris.com.br/elseve/colorvive/condicionador-200ml",
+      "tags": [
+        "COLOR_TREATED",
+        "HIGHLIGHTS"
+      ],
+      "label": {
+        "source": "https://www.loreal-paris.com.br/elseve/colorvive/condicionador-200ml",
+        "area": "Comprimento e pontas",
+        "hairCondition": "Após a lavagem",
+        "rinse": "RINSE_OFF",
+        "instructions": "Aplique do comprimento às pontas, deixe agir conforme a embalagem e enxágue bem.",
+        "warnings": []
+      },
+      "review": {
+        "status": "IN_REVIEW",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18",
+        "reason": "A lista online apresenta tensoativos típicos de xampu. Conferir a composição no verso da embalagem do condicionador."
+      },
+      "registry": {
+        "process": "25351473957200705",
+        "legalName": "ELSEVE COLORVIVE CONDICIONADOR",
+        "holder": "PROCOSA PRODUTOS DE BELEZA LTDA",
+        "holderCnpj": "33306929000100",
+        "status": "ACTIVE",
+        "validUntil": "2027-09-28",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "tresemme-protetor-termico-spray-110",
+      "category": "HEAT_PROTECTANT",
+      "brand": "TRESemmé",
+      "name": "Spray Protetor Térmico",
+      "presentation": "110 mL",
+      "manufacturerUrl": "https://www.tresemme.com/br/p/protetor-t%C3%A9rmico-tresemm%C3%A9-spray.html/07891150100343",
+      "tags": [
+        "HEAT",
+        "FRIZZ"
+      ],
+      "label": {
+        "source": "https://www.tresemme.com/br/p/protetor-t%C3%A9rmico-tresemm%C3%A9-spray.html/07891150100343",
+        "area": "Fios, desde a raiz",
+        "hairCondition": "Cabelo seco ou úmido na aplicação",
+        "rinse": "LEAVE_IN",
+        "instructions": "Borrife nos fios e penteie antes da finalização com calor. Confira a condição dos fios indicada para a ferramenta.",
+        "warnings": [],
+        "compositionSource": "https://www.tresemme.com/br/p/protetor-t%C3%A9rmico-tresemm%C3%A9-spray.html/07891150100343",
+        "heatTools": [
+          "DRYER",
+          "FLAT_IRON",
+          "CURLING_IRON"
+        ]
+      },
+      "review": {
+        "status": "IN_REVIEW",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18",
+        "reason": "A página informa composição e ferramentas. A imagem do verso ficou indisponível para conferir as advertências."
+      },
+      "registry": {
+        "process": "25351014438202663",
+        "legalName": "TRESEMME PROTETOR TERMICO SPRAY",
+        "holder": "UNILEVER BRASIL INDUSTRIAL LTDA",
+        "holderCnpj": "01615814000101",
+        "status": "ACTIVE",
+        "validUntil": "2036-01-23",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "amend-blindagem-essencial-fluido-180",
+      "category": "HEAT_PROTECTANT",
+      "brand": "Amend",
+      "name": "Blindagem Essencial Fluído Antiumidade",
+      "presentation": "180 mL",
+      "manufacturerUrl": "https://www.amend.com.br/fluido-antiumidade-amend-blindagem-essencial/p/1366.html",
+      "tags": ["HEAT", "FRIZZ"],
+      "label": {
+        "source": "https://www.amend.com.br/fluido-antiumidade-amend-blindagem-essencial/p/1366.html",
+        "compositionSource": "https://www.amend.com.br/fluido-antiumidade-amend-blindagem-essencial/p/1366.html",
+        "area": "Comprimento",
+        "hairCondition": "Fios lavados e úmidos",
+        "rinse": "LEAVE_IN",
+        "instructions": "Borrife no comprimento e penteie para distribuir. Seque com secador. A chapinha é opcional após secar os fios.",
+        "warnings": [
+          "Produto de uso externo. Evite a ingestão.",
+          "Guarde em local fresco, protegido de luz intensa e fora do alcance de crianças.",
+          "Se atingir os olhos, lave imediatamente com água em abundância."
+        ],
+        "heatTools": ["DRYER", "FLAT_IRON"],
+        "requiredHeatTools": ["DRYER"]
+      },
+      "review": {
+        "status": "PUBLISHED",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18"
+      },
+      "registry": {
+        "process": "25351177329202575",
+        "legalName": "AMEND BLINDAGEM ESSENCIAL FLUÍDO ANTIUMIDADE",
+        "holder": "bem estar industria comércio e importação de cosméticos ltda",
+        "holderCnpj": "08040489000137",
+        "status": "ACTIVE",
+        "validUntil": "2035-10-01",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "elseve-cachos-longos-creme-3-em-1-500",
+      "category": "LEAVE_IN",
+      "brand": "Elseve",
+      "name": "Cachos Longos dos Sonhos Creme Milagroso 3 em 1",
+      "presentation": "500 mL",
+      "manufacturerUrl": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/creme-milagroso-3-em-1-500ml",
+      "tags": [
+        "CURLY",
+        "DRYNESS",
+        "FRIZZ"
+      ],
+      "label": {
+        "source": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/creme-milagroso-3-em-1-500ml",
+        "area": "Fios",
+        "hairCondition": "Cabelo seco ou úmido",
+        "rinse": "LEAVE_IN",
+        "instructions": "Como creme de pentear, aplique nos fios e penteie. As funções de condicionador e máscara seguem instruções próprias de enxágue.",
+        "warnings": [
+          "Guarde fora do alcance de crianças.",
+          "Em caso de contato com os olhos, lave-os imediatamente com água."
+        ],
+        "compositionSource": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/creme-milagroso-3-em-1-500ml"
+      },
+      "review": {
+        "status": "PUBLISHED",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18"
+      },
+      "registry": {
+        "process": "25351161951202561",
+        "legalName": "ELSEVE CACHOS LONGOS DOS SONHOS 3 EM 1 CREME",
+        "holder": "PROCOSA PRODUTOS DE BELEZA LTDA",
+        "holderCnpj": "33306929000100",
+        "status": "ACTIVE",
+        "validUntil": "2035-09-10",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "salon-line-definicao-natural-300",
+      "category": "LEAVE_IN",
+      "brand": "Salon Line",
+      "name": "Creme para Pentear Definição Natural",
+      "presentation": "300 mL",
+      "manufacturerUrl": "https://www.salonline.com.br/creme-para-pentear-condicionante-definicao-natural-300ml",
+      "tags": [
+        "WAVY",
+        "CURLY",
+        "FINE",
+        "FRIZZ"
+      ],
+      "label": {
+        "source": "https://www.salonline.com.br/creme-para-pentear-condicionante-definicao-natural-300ml",
+        "area": "Comprimento e pontas",
+        "hairCondition": "Cabelo limpo e úmido",
+        "rinse": "LEAVE_IN",
+        "instructions": "Distribua mecha a mecha e desembarace. Finalize conforme o rótulo.",
+        "warnings": [],
+        "audienceRestriction": "A página informa +12 anos."
+      },
+      "review": {
+        "status": "IN_REVIEW",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18",
+        "reason": "A indicação etária exige uma informação que o perfil atual não coleta. Falta vincular o processo da variante."
+      }
+    },
+    {
+      "id": "salon-line-sos-cachos-coco-300",
+      "category": "LEAVE_IN",
+      "brand": "Salon Line",
+      "name": "S.O.S Cachos Coco Tratamento Profundo Creme para Pentear",
+      "presentation": "300 mL",
+      "manufacturerUrl": "https://www.salonline.com.br/creme-para-pentear-sos-cachos-coco-tratamento-profundo-300ml",
+      "tags": [
+        "WAVY",
+        "CURLY",
+        "COILY",
+        "DRYNESS",
+        "FRIZZ"
+      ],
+      "label": {
+        "source": "https://www.salonline.com.br/creme-para-pentear-sos-cachos-coco-tratamento-profundo-300ml",
+        "area": "Comprimento e pontas",
+        "hairCondition": "Cabelo limpo e úmido",
+        "rinse": "LEAVE_IN",
+        "instructions": "Distribua mecha a mecha e desembarace antes de finalizar.",
+        "warnings": [],
+        "audienceRestriction": "A página informa +12 anos."
+      },
+      "review": {
+        "status": "IN_REVIEW",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18",
+        "reason": "A indicação etária exige uma informação que o perfil atual não coleta. Há processos com nomes semelhantes e situações distintas na base."
+      }
+    },
+    {
+      "id": "elseve-cachos-longos-mascara-300",
+      "category": "MASK",
+      "brand": "Elseve",
+      "name": "Cachos Longos dos Sonhos Creme de Tratamento",
+      "presentation": "300 g",
+      "manufacturerUrl": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/creme-de-tratamento-nutritivo-300g",
+      "tags": [
+        "CURLY",
+        "DRYNESS",
+        "FRIZZ"
+      ],
+      "label": {
+        "source": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/creme-de-tratamento-nutritivo-300g",
+        "area": "Fios",
+        "hairCondition": "Cabelo lavado e úmido",
+        "rinse": "RINSE_OFF",
+        "instructions": "Aplique nos fios, aguarde cinco minutos e enxágue bem.",
+        "warnings": [
+          "Guarde fora do alcance de crianças.",
+          "Em caso de contato com os olhos, lave-os imediatamente com água."
+        ],
+        "compositionSource": "https://www.loreal-paris.com.br/elseve/cachos-longos-dos-sonhos/creme-de-tratamento-nutritivo-300g"
+      },
+      "review": {
+        "status": "PUBLISHED",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18"
+      },
+      "registry": {
+        "process": "25351162135202575",
+        "legalName": "ELSEVE CACHOS LONGOS DOS SONHOS TRATAMENTO",
+        "holder": "PROCOSA PRODUTOS DE BELEZA LTDA",
+        "holderCnpj": "33306929000100",
+        "status": "ACTIVE",
+        "validUntil": "2035-09-10",
+        "checkedOn": "2026-11-11",
+        "match": "NAME_AND_HOLDER"
+      }
+    },
+    {
+      "id": "pantene-colageno-hidrata-resgata-mascara",
+      "category": "MASK",
+      "brand": "Pantene",
+      "name": "Máscara Colágeno Hidrata e Resgata",
+      "presentation": "Apresentação a confirmar",
+      "manufacturerUrl": "https://pantene.com.br/pt-br/produtos/tratamentos/mascara-hidratante-colageno-hidrata-resgata",
+      "tags": [
+        "DRYNESS"
+      ],
+      "label": {
+        "source": "https://pantene.com.br/pt-br/produtos/tratamentos/mascara-hidratante-colageno-hidrata-resgata",
+        "area": "Fios, evitando a raiz",
+        "hairCondition": "Cabelo úmido",
+        "rinse": "RINSE_OFF",
+        "instructions": "Distribua nos fios após retirar o excesso de água. Aguarde três minutos e enxágue.",
+        "warnings": [],
+        "compositionSource": "https://pantene.com.br/pt-br/produtos/tratamentos/mascara-hidratante-colageno-hidrata-resgata"
+      },
+      "review": {
+        "status": "IN_REVIEW",
+        "reviewedOn": "2026-11-11",
+        "reviewer": "Codex · revisão editorial documental E2-18",
+        "reason": "O processo localizado para a linha corresponde ao xampu. Falta vincular o processo e a apresentação da máscara."
+      }
+    }
+  ]
+}

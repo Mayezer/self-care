@@ -1,0 +1,316 @@
+@if (failed()) {
+  <section class="card agenda-section" aria-label="Falha ao carregar a semana">
+    <p role="alert">Não foi possível carregar a semana. Tente novamente.</p>
+    <button class="secondary preview-action" type="button" (click)="retry()">Tentar novamente</button>
+    @if (!week()) {
+      <button class="secondary preview-action" type="button" (click)="goToToday()">Voltar para hoje</button>
+    }
+  </section>
+}
+@if (loading()) {
+  <p class="info-strip" role="status">Carregando a semana…</p>
+}
+<p #actionStatus class="agenda-feedback" role="status" tabindex="-1">{{ actionNotice() }}</p>
+@if (actionError(); as message) {
+  <p class="agenda-feedback field-error" role="alert">{{ message }}</p>
+}
+
+@if (week(); as current) {
+  <div class="agenda-grid">
+    <div class="agenda-overview">
+      <section class="card week-summary" aria-labelledby="week-summary-title">
+        <div class="section-heading">
+          <h2 id="week-summary-title" class="pill status-planned">
+            <span class="material-symbol" aria-hidden="true">calendar_today</span>
+            {{ current.days.includes(current.today) ? 'Esta semana' : 'Semana exibida' }}
+          </h2>
+          <p class="week-count"><strong>{{ current.completedCount }}</strong> {{ current.completedCount === 1 ? 'cuidado concluído' : 'cuidados concluídos' }}</p>
+        </div>
+        <div class="progress-track" aria-hidden="true"><span [style.width.%]="weeklyProgress()"></span></div>
+        <p class="hint"><span class="material-symbol success-ink" aria-hidden="true">self_improvement</span>
+          {{ weeklyPending() }} {{ weeklyPending() === 1 ? 'cuidado planejado' : 'cuidados planejados' }} na semana.
+        </p>
+        @let streak = current.careStreakDays;
+        @if (streak != null) {
+          <div class="care-streak">
+            <h3>Sequência de cuidado</h3>
+            <p class="week-count" role="status"><strong>{{ streak }}</strong> {{ streak === 1 ? 'dia seguido' : 'dias seguidos' }}</p>
+            <p class="hint">
+              @if (streak === 0) { Comece no seu ritmo. }
+              Qualquer categoria conta. Respeite o seu ritmo de lavagem.
+            </p>
+          </div>
+        }
+      </section>
+
+      <section class="card week-card" aria-labelledby="week-title" [attr.aria-busy]="loading()">
+        <div class="week-navigation" role="group" aria-label="Navegação entre semanas">
+          <button class="icon-button" type="button" aria-label="Semana anterior"
+                  [attr.aria-disabled]="loading() || submitting() || !current.previousWeek"
+                  (click)="current.previousWeek && loadWeek(current.previousWeek)">
+            <span class="material-symbol" aria-hidden="true">chevron_left</span>
+          </button>
+          <h2 id="week-title"><span class="material-symbol" aria-hidden="true">calendar_month</span>
+            {{ current.days.includes(current.today) ? 'Semana atual' : 'Semana de ' + shortDate(current.days[0]) }} <span aria-hidden="true">•</span> {{ monthLabel(current.days[0]) }}
+          </h2>
+          <button class="icon-button" type="button" aria-label="Próxima semana"
+                  [attr.aria-disabled]="loading() || submitting() || !current.nextWeek"
+                  (click)="current.nextWeek && loadWeek(current.nextWeek)">
+            <span class="material-symbol" aria-hidden="true">chevron_right</span>
+          </button>
+        </div>
+        <p class="visually-hidden" role="status">De {{ dateLabel(current.days[0]) }} a {{ dateLabel(current.days[current.days.length - 1]) }}.</p>
+        <div class="weekdays calendar-days" role="group" aria-label="Dias da semana">
+          @for (date of current.days; track date; let index = $index) {
+            <button class="day" type="button" [attr.aria-describedby]="'calendar-date-' + date"
+                    [attr.aria-pressed]="date === selectedDate()" [attr.aria-current]="date === current.today ? 'date' : null"
+                    [attr.aria-disabled]="submitting() || loading()" (click)="!submitting() && !loading() && selectDate(date)">
+              <span>{{ date === current.today ? 'Hoje' : weekdays[index].short }}</span>
+              <strong>{{ date.slice(-2) }}</strong>
+              <span class="calendar-dots" aria-hidden="true">
+                @for (category of categoriesByDay().get(date); track category) {
+                  <span [attr.data-category]="category"></span>
+                } @empty {
+                  <span></span>
+                }
+              </span>
+            </button>
+            <span hidden [id]="'calendar-date-' + date">{{ dateLabel(date) }}</span>
+          }
+        </div>
+        @if (!current.days.includes(current.today)) {
+          <button class="text-button" type="button" [attr.aria-disabled]="submitting() || loading()"
+                  (click)="loadWeek(null)">Voltar para hoje</button>
+        }
+      </section>
+    </div>
+
+    <div class="agenda-priority">
+      <section class="card next-care" aria-labelledby="next-care-title" [attr.data-category]="current.nextCare?.category">
+        @if (current.nextCare; as item) {
+          <div class="featured-body">
+            <div>
+              <div class="item-tags">
+                <span class="care-category-badge" [attr.data-category]="item.category">
+                  <span class="material-symbol" aria-hidden="true">{{ categoryIcons[item.category] }}</span>{{ categoryLabels[item.category] }}
+                </span>
+                <time class="pill status-planned" [attr.datetime]="item.date">
+                  <span class="material-symbol" aria-hidden="true">schedule</span>{{ item.date === current.today ? 'Hoje' : shortDate(item.date) }}
+                </time>
+              </div>
+              <h2 class="eyebrow" id="next-care-title">Próximo cuidado</h2>
+              <p class="featured-title">{{ item.title }}</p>
+              @if (itemDetails(item, false); as details) {
+                <p class="care-description">{{ details }}</p>
+              }
+              <ng-container [ngTemplateOutlet]="reminder" [ngTemplateOutletContext]="{ $implicit: item.reminderTime }" />
+            </div>
+            <span class="category-icon material-symbol" [attr.data-category]="item.category" aria-hidden="true">{{ categoryIcons[item.category] }}</span>
+          </div>
+          <ng-container [ngTemplateOutlet]="actions" [ngTemplateOutletContext]="{ $implicit: item }" />
+        } @else {
+          <h2 id="next-care-title"><span class="material-symbol" aria-hidden="true">spa</span> Próximo cuidado</h2>
+          <p>Nenhum cuidado planejado de hoje em diante.</p>
+          <a class="care-add-button" routerLink="/novo-cuidado"><span class="material-symbol" aria-hidden="true">add</span> Adicionar cuidado</a>
+        }
+      </section>
+
+      @if (overdueItems().length) {
+        <section class="overdue-panel" aria-labelledby="overdue-title">
+          <h2 id="overdue-title"><span class="material-symbol" aria-hidden="true">info</span> Cuidados pendentes</h2>
+          <ul class="sessions" role="list">
+            @for (item of overdueItems(); track item.id) {
+              <li class="overdue-item">
+                <div class="care-row">
+                  <span class="category-icon material-symbol" [attr.data-category]="item.category" aria-hidden="true">{{ categoryIcons[item.category] }}</span>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <p>{{ itemDetails(item) }}</p>
+                    <time class="hint" [attr.datetime]="item.date">{{ dateLabel(item.date) }}</time>
+                  </div>
+                  <span class="pill status-overdue"><span class="material-symbol" aria-hidden="true">info</span>Atrasada</span>
+                </div>
+                <ng-container [ngTemplateOutlet]="actions" [ngTemplateOutletContext]="{ $implicit: item }" />
+              </li>
+            }
+          </ul>
+          <p class="hint overdue-note">Sem cobranças: conclua, pule ou reagende quando for melhor.</p>
+        </section>
+      }
+    </div>
+
+    <section class="agenda-day" aria-labelledby="day-title">
+      <div class="section-heading">
+        <h2 id="day-title">{{ selectedDate() === current.today ? 'Cuidados de hoje' : 'Cuidados do dia' }}
+          <time [attr.datetime]="selectedDate()">({{ shortDate(selectedDate()) }})</time>
+        </h2>
+        <p class="hint" role="status">{{ dailyItems().length }} {{ dailyItems().length === 1 ? 'item' : 'itens' }}</p>
+      </div>
+      <app-category-filter [selected]="category()" [disabled]="submitting()" (selectedChange)="selectCategory($event)" />
+
+      @for (group of dailyGroups(); track group.title) {
+        <section class="care-period">
+          <h3><span class="material-symbol" aria-hidden="true">{{ group.icon }}</span> {{ group.title }}</h3>
+          <ul class="sessions" role="list">
+            @for (item of group.items; track item.id) {
+              <li class="card care-row-card">
+                <div class="care-row">
+                  <span class="category-icon material-symbol" [attr.data-category]="item.category" aria-hidden="true">{{ categoryIcons[item.category] }}</span>
+                  <div>
+                    <strong>{{ item.title }}</strong>
+                    <div class="item-tags">
+                      <span class="care-category-badge" [attr.data-category]="item.category">{{ categoryLabels[item.category] }}</span>
+                      @if (itemDetails(item, false); as details) {
+                        <p class="hint care-description">{{ details }}</p>
+                      }
+                    </div>
+                  </div>
+                  <span class="pill" [attr.data-status]="item.status">
+                    <span class="material-symbol" aria-hidden="true">{{ statusIcons[item.status] }}</span>{{ statusLabels[item.status] }}
+                  </span>
+                </div>
+                @if (item.completedOn ?? item.skippedOn; as actionDate) {
+                  <p class="hint action-date"><time [attr.datetime]="actionDate">{{ dateLabel(actionDate) }}</time></p>
+                }
+                @if (item.reminderTime) {
+                  <div class="action-date">
+                    <ng-container [ngTemplateOutlet]="reminder" [ngTemplateOutletContext]="{ $implicit: item.reminderTime }" />
+                  </div>
+                }
+                @if (item.id !== current.nextCare?.id) {
+                  <ng-container [ngTemplateOutlet]="actions" [ngTemplateOutletContext]="{ $implicit: item }" />
+                }
+              </li>
+            }
+          </ul>
+        </section>
+      } @empty {
+        @if (!selectedDayHasOverdue()) {
+          <div class="card empty-state">
+            <span class="material-symbol" aria-hidden="true">spa</span>
+            <p>Nenhum cuidado nesta data.</p>
+          </div>
+        }
+      }
+      @if (selectedDayHasOverdue()) {
+        <p class="hint">Veja os cuidados em atraso deste dia na seção Cuidados pendentes.</p>
+      }
+    </section>
+
+    <div class="agenda-support">
+      @if (dailyMessage(); as message) {
+        <aside class="info-strip wellness-note daily-message" aria-labelledby="daily-message-title">
+          <span class="editorial-icon material-symbol" aria-hidden="true">self_improvement</span>
+          <div>
+            <h2 id="daily-message-title">Mensagem do dia</h2>
+            @if (message.category === 'SKIN') {
+              <span class="care-category-badge" data-category="SKIN">{{ categoryLabels.SKIN }}</span>
+            }
+            <p>{{ message.text }}</p>
+          </div>
+        </aside>
+      } @else {
+        <aside class="info-strip wellness-note">
+          <span class="editorial-icon material-symbol" aria-hidden="true">self_improvement</span>
+          <div><strong>Momento de respiro</strong><p>Reserve um momento para cuidar de você, no seu ritmo.</p></div>
+        </aside>
+      }
+
+      @if (current.nextCare) {
+        <div class="agenda-cta">
+          <a class="care-add-button" routerLink="/novo-cuidado"><span class="material-symbol" aria-hidden="true">add</span> Adicionar cuidado</a>
+        </div>
+      }
+    </div>
+  </div>
+}
+<ng-template #reminder let-time>
+  @if (time) {
+    <p class="hint care-reminder"><span class="material-symbol" aria-hidden="true">schedule</span>
+      Lembrete às <time [attr.datetime]="time">{{ time }}</time>
+    </p>
+  }
+</ng-template>
+<ng-template #actions let-item>
+  <div class="agenda-actions">
+    @if (item.status === 'PLANNED') {
+      <button #completeButton class="choice-button complete-action" type="button" [attr.aria-disabled]="actionsUnavailable()"
+              [attr.aria-label]="'Concluir ' + item.title"
+              [attr.aria-expanded]="dateEditor()?.id === item.id && dateEditor()?.action === 'complete'"
+              (click)="openDateEditor(item.id, 'complete')"><span class="material-symbol" aria-hidden="true">check</span> Concluir</button>
+      @if (dateEditor()?.id === item.id && dateEditor()?.action === 'complete') {
+        <ng-container [ngTemplateOutlet]="dateForm"
+                      [ngTemplateOutletContext]="{ item, action: 'complete', button: completeButton }" />
+      }
+      @if (item.canReschedule) {
+        <button #rescheduleButton class="choice-button reschedule-action" type="button" [attr.aria-disabled]="actionsUnavailable()"
+                [attr.aria-label]="'Reagendar ' + item.title"
+                [attr.aria-expanded]="dateEditor()?.id === item.id && dateEditor()?.action === 'reschedule'"
+                (click)="openDateEditor(item.id, 'reschedule')"><span class="material-symbol" aria-hidden="true">event</span> Reagendar</button>
+        @if (dateEditor()?.id === item.id && dateEditor()?.action === 'reschedule') {
+          <ng-container [ngTemplateOutlet]="dateForm"
+                        [ngTemplateOutletContext]="{ item, action: 'reschedule', button: rescheduleButton }" />
+        }
+      }
+      <button class="choice-button skip-action" type="button" [attr.aria-disabled]="actionsUnavailable()"
+              [attr.aria-label]="'Pular ' + item.title"
+              (click)="changeOccurrence(item.id, 'skip')"><span class="material-symbol" aria-hidden="true">redo</span> Pular</button>
+    } @else {
+      <button class="secondary" type="button" [attr.aria-disabled]="actionsUnavailable()"
+              [attr.aria-label]="'Desfazer ação em ' + item.title"
+              (click)="changeOccurrence(item.id, 'undo')">Desfazer</button>
+    }
+  </div>
+  <ng-container [ngTemplateOutlet]="planLink" [ngTemplateOutletContext]="{ $implicit: item }" />
+  @if (item.category === 'SKIN' && item.planId && item.canReschedule) {
+    <div>
+      <button #closeButton class="secondary" type="button" [attr.aria-disabled]="actionsUnavailable()"
+              [attr.aria-expanded]="closingItem() === item.id" (click)="confirmPlanClosure(item)">Encerrar rotina</button>
+    </div>
+    @if (closingItem() === item.id) {
+      <div class="agenda-date-form" role="group" aria-label="Encerrar rotina de pele">
+        <p #closeConfirmation tabindex="-1">Os cuidados ainda planejados para hoje e para os próximos dias sairão da agenda.</p>
+        <div class="agenda-actions">
+          <button class="primary" type="button" [attr.aria-disabled]="actionsUnavailable()"
+                  (click)="closeSkinPlan(item)">Confirmar encerramento</button>
+          <button class="secondary" type="button" [attr.aria-disabled]="submitting()"
+                  (click)="cancelDateEditor(closeButton)">Cancelar</button>
+        </div>
+      </div>
+    }
+  }
+</ng-template>
+
+<ng-template #planLink let-item>
+  @if (item.category === 'HAIR' && item.planId) {
+    <div><a class="agenda-add" [routerLink]="['/cronogramas', item.planId]">Ver cronograma</a></div>
+  }
+</ng-template>
+
+<ng-template #dateForm let-item="item" let-action="action" let-button="button">
+  @let completing = action === 'complete';
+  @let today = week()?.today ?? '';
+  <form class="agenda-date-form" novalidate [attr.aria-label]="(completing ? 'Concluir ' : 'Reagendar ') + item.title"
+        (submit)="$event.preventDefault(); changeOccurrence(item.id, action, actionDate.value)">
+    <div class="field">
+      <label [for]="'action-date-' + item.id">{{ completing ? 'Data de realização' : 'Nova data planejada' }}</label>
+      <input #actionDate [id]="'action-date-' + item.id" [name]="completing ? 'completedOn' : 'plannedDate'"
+             type="date" required [value]="completing || item.date < today ? today : item.date"
+             [attr.max]="completing ? today : '9999-12-31'" [attr.min]="completing ? null : today"
+             [readOnly]="submitting()" [attr.aria-invalid]="dateError() ? 'true' : null"
+             [attr.aria-describedby]="dateError() ? 'action-date-hint action-date-error' : 'action-date-hint'"
+             (input)="dateError.set('')">
+      <p class="hint" id="action-date-hint">{{ completing ? 'Escolha hoje ou uma data passada.' : 'Escolha hoje ou uma data futura.' }}</p>
+      @if (dateError(); as message) {
+        <p class="field-error" id="action-date-error" role="alert">{{ message }}</p>
+      }
+    </div>
+    <div class="agenda-actions">
+      <button class="primary" type="submit" [attr.aria-disabled]="actionsUnavailable()">
+        {{ completing ? 'Confirmar conclusão' : 'Confirmar reagendamento' }}
+      </button>
+      <button class="secondary" type="button" [attr.aria-disabled]="submitting()"
+              (click)="cancelDateEditor(button)">Cancelar</button>
+    </div>
+  </form>
+</ng-template>

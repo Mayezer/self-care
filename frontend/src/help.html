@@ -1,0 +1,56 @@
+<div class="page-width page-content help">
+  <header class="intro">
+    <p class="eyebrow">Como usar a agenda</p>
+    <h1 tabindex="-1">Ajuda</h1>
+    <p>{{ guidesAvailable ? 'Aprenda a usar a agenda e encontre guias para os seus cuidados.' : 'Aprenda a usar a agenda.' }}</p>
+  </header>
+
+  <div class="help-topics">
+    @if (guidesAvailable) {
+      <section class="card" aria-labelledby="guias">
+        <h2 id="guias" tabindex="-1">Guias e FAQs</h2>
+        <ul class="guide-index">
+          @for (guide of guides; track guide.id) {
+            <li>
+              <a class="agenda-add" [routerLink]="['/ajuda/guias', guide.id]">{{ guide.title }}</a>
+              <span>{{ guide.summary }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+
+    <section class="card" aria-labelledby="help-hair">
+      <h2 id="help-hair">Criar um cronograma capilar</h2>
+      <p>Na Prévia capilar, escolha a data de início, a duração e os dias da semana. Selecione <strong>Gerar prévia</strong> para conferir as datas. Cada sessão começa como Somente lavagem; você pode mudar a etapa de cada uma.</p>
+      <p>Para guardar as sessões na agenda, escolha <strong>Entrar para salvar na agenda</strong>. Depois de entrar, confira as escolhas e selecione <strong>Salvar cronograma</strong>.</p>
+      <p>Veja os dias de lavagem na Agenda. Quando os lembretes estiverem disponíveis, as preferências ficam em <strong>Configurações → Lembretes</strong>.</p>
+      <p>Para saber como usar um produto e por quanto tempo deixá-lo agir, siga as instruções do rótulo.</p>
+      <div class="help-links">
+        <a class="agenda-add" routerLink="/">Abrir prévia capilar</a>
+        <a class="agenda-add" routerLink="/agenda">Ver datas na agenda</a>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="help-new-care">
+      <h2 id="help-new-care">Adicionar um cuidado</h2>
+      <p>Na agenda, escolha <strong>Adicionar cuidado</strong>. Você pode planejar cuidados de pele, maquiagem ou unhas e esmalte. Para pele, escolha um cuidado avulso ou uma rotina que se repete.</p>
+      <p>Se a maquiagem ou o cuidado de unhas já foi feito, escolha <strong>Já realizado</strong> e informe a data para salvar direto no histórico.</p>
+      <a class="agenda-add" routerLink="/novo-cuidado">Abrir formulário de cuidado</a>
+    </section>
+
+    <section class="card" aria-labelledby="help-actions">
+      <h2 id="help-actions">Concluir, pular ou reagendar</h2>
+      <ul>
+        <li><strong>Concluir:</strong> informe quando fez o cuidado. A data pode ser hoje ou uma data passada.</li>
+        <li><strong>Pular:</strong> registre que você não fez o cuidado naquele dia.</li>
+        <li><strong>Reagendar:</strong> escolha uma nova data a partir de hoje e confirme. A opção aparece em cuidados avulsos planejados ou sessões planejadas de uma rotina aberta.</li>
+      </ul>
+      <p>No histórico, use <strong>Desfazer</strong> para reverter a conclusão ou o pulo de um cuidado que estava agendado.</p>
+      <div class="help-links">
+        <a class="agenda-add" routerLink="/agenda">Abrir agenda</a>
+        <a class="agenda-add" routerLink="/historico">Abrir histórico</a>
+      </div>
+    </section>
+  </div>
+</div>

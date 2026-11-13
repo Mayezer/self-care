@@ -1,0 +1,19 @@
+.guide-body > :first-child { margin-top: 0; }
+.guide-body ol { margin-bottom: 0; padding-inline-start: var(--space-lg); color: var(--muted); }
+.curl-guide-group, .guide-back { margin-top: var(--space-md); }
+.curl-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 5.5rem), 1fr));
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+.curl-guide-grid figure {
+  padding: var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--neutral);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+.curl-guide-grid svg { display: block; width: 3.5rem; color: var(--hair-ink); }
+.curl-guide-grid strong { display: block; }

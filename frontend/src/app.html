@@ -1,0 +1,174 @@
+<div class="page-width page-content hair-page">
+  <div class="planner">
+    <div class="planner-setup">
+      <header class="editorial-banner hair-intro">
+        <span class="editorial-icon material-symbol" aria-hidden="true">auto_awesome</span>
+        <div>
+          <h1 #heading tabindex="-1">Cronograma capilar</h1>
+          <p>Monte seu ciclo de cuidados. Escolha a frequência, confira as etapas na prévia e salve na sua agenda.</p>
+        </div>
+      </header>
+      <section class="card frequency-card" aria-labelledby="schedule-title">
+        <div class="section-heading">
+          <h2 id="schedule-title"><span class="material-symbol" aria-hidden="true">tune</span> Frequência e duração</h2>
+          <span class="pill status-completed">Ciclo guiado</span>
+        </div>
+        <form novalidate (submit)="$event.preventDefault(); generatePreview()">
+          <div class="field">
+            <label for="start-date">Data de início</label>
+            <div class="field-with-icon">
+              <span class="material-symbol" aria-hidden="true">calendar_today</span>
+              <input #dateInput id="start-date" type="date" required [value]="startDate()" [disabled]="saving()"
+                     [attr.aria-invalid]="errors().startDate ? 'true' : null"
+                     [attr.aria-describedby]="errors().startDate ? 'start-date-hint start-date-error' : 'start-date-hint'"
+                     (input)="changeStartDate(dateInput.value)">
+            </div>
+            <p class="hint" id="start-date-hint">Escolha hoje ou uma data futura.</p>
+            @if (errors().startDate; as error) {
+              <p class="field-error" id="start-date-error">{{ error }}</p>
+            }
+          </div>
+
+          <fieldset [disabled]="saving()">
+            <legend>Duração do ciclo</legend>
+            <div class="duration-presets">
+              @for (duration of durations; track duration) {
+                <button class="choice-button" type="button" [attr.aria-pressed]="weeks() === duration"
+                        (click)="changeWeeks(duration)">{{ duration }} semanas</button>
+              }
+            </div>
+            <div class="field custom-duration">
+              <label for="weeks">Duração em semanas <span class="hint" id="weeks-hint">(de 1 a 12)</span></label>
+              <input #weeksInput id="weeks" type="number" min="1" max="12" step="1" required
+                     [value]="weeks() ?? ''" [attr.aria-invalid]="errors().weeks ? 'true' : null"
+                     [attr.aria-describedby]="errors().weeks ? 'weeks-error' : null"
+                     (input)="changeWeeks(weeksInput.valueAsNumber)">
+              @if (errors().weeks; as error) {
+                <p class="field-error" id="weeks-error">{{ error }}</p>
+              }
+            </div>
+          </fieldset>
+
+          <fieldset #weekdayFields [disabled]="saving()" aria-describedby="weekdays-hint">
+            <legend>Dias da semana</legend>
+            <div class="weekdays">
+              @for (day of weekdays; track day.value; let first = $first) {
+                <button class="day" type="button" [attr.aria-label]="day.short + ', ' + day.label"
+                        [attr.aria-describedby]="first && errors().weekdays ? 'weekdays-error' : null"
+                        [attr.aria-pressed]="selectedDays().includes(day.value)"
+                        (click)="toggleDay(day.value)">
+                  <span>{{ day.short }}</span>
+                  <span class="day-check" aria-hidden="true"></span>
+                </button>
+              }
+            </div>
+            <p class="hint weekday-hint" id="weekdays-hint">
+              {{ selectedDays().length === 0 ? 'Selecione pelo menos um dia.' : selectedDays().length === 1 ? '1 dia selecionado' : selectedDays().length + ' dias selecionados' }}
+            </p>
+            @if (errors().weekdays; as error) {
+              <p class="field-error" id="weekdays-error">{{ error }}</p>
+            }
+          </fieldset>
+
+          <button class="primary" type="submit" [disabled]="saving()" [attr.aria-disabled]="loading() ? 'true' : null">
+            <span class="material-symbol" aria-hidden="true">calendar_view_week</span>
+            {{ loading() ? 'Gerando prévia…' : 'Gerar prévia' }}
+          </button>
+          @if (requestError(); as error) {
+            <p class="field-error" role="alert">{{ error }}</p>
+          }
+        </form>
+      </section>
+
+      <p class="info-strip">
+        <span class="material-symbol" aria-hidden="true">info</span>
+        Ao alterar os dias da semana, as etapas das datas mantidas serão preservadas.
+      </p>
+    </div>
+
+    <section class="preview" aria-labelledby="preview-title">
+      <div class="section-heading">
+        <h2 id="preview-title"><span class="material-symbol hair-ink" aria-hidden="true">calendar_view_week</span> Prévia das etapas</h2>
+        <span class="pill preview-total">{{ occurrences().length }} {{ occurrences().length === 1 ? 'sessão' : 'sessões' }}</span>
+      </div>
+      <div class="editorial-grid">
+        <div class="card editorial-card">
+          <span class="editorial-icon material-symbol" aria-hidden="true">spa</span>
+          <div><strong>Etapas de cuidado</strong><p>Lavagem e tratamentos</p></div>
+        </div>
+        <div class="card editorial-card">
+          <span class="editorial-icon material-symbol" aria-hidden="true">info</span>
+          <div><strong>Seus cosméticos</strong><p>Siga o rótulo do produto</p></div>
+        </div>
+      </div>
+
+      <p class="preview-status" [class.visually-hidden]="occurrences().length && !loading() && !outdated()" role="status">
+        @if (loading()) {
+          Consultando as datas…
+        } @else if (outdated()) {
+          {{ resuming ? 'Gere a prévia novamente para confirmar as datas abaixo.' : 'Os parâmetros mudaram. Gere a prévia para atualizar as datas abaixo.' }}
+        } @else if (occurrences().length === 1) {
+          1 sessão prevista
+        } @else if (occurrences().length > 1) {
+          {{ occurrences().length }} sessões previstas
+        } @else {
+          As datas vão aparecer aqui depois que você gerar a prévia.
+        }
+      </p>
+
+      @if (occurrences().length) {
+        <ol class="sessions hair-sessions" role="list">
+          @for (occurrence of occurrences(); track occurrence.date) {
+            <li class="card hair-session" [attr.data-stage]="occurrence.stage">
+              <div class="session-heading">
+                <time [id]="'stage-date-' + occurrence.date" [attr.datetime]="occurrence.date">
+                  <span class="visually-hidden">{{ occurrence.label }}</span><span aria-hidden="true">{{ compactDate(occurrence.date) }}</span>
+                </time>
+                <span class="pill stage-pill">Semana {{ cycleWeek(occurrence.date) }}</span>
+                <span class="material-symbol" aria-hidden="true">{{ stageCues[occurrence.stage].icon }}</span>
+              </div>
+              <div class="field">
+                <label class="hint" [id]="'stage-label-' + occurrence.date" [for]="'stage-' + occurrence.date">Etapa da sessão</label>
+                <select #stageInput [id]="'stage-' + occurrence.date" [disabled]="saving()"
+                        [attr.aria-labelledby]="'stage-label-' + occurrence.date + ' stage-date-' + occurrence.date"
+                        (change)="changeStage(occurrence.date, stageInput.value)">
+                  @for (stage of stages; track stage.value) {
+                    <option [value]="stage.value" [selected]="stage.value === occurrence.stage">{{ stage.label }}</option>
+                  }
+                </select>
+              </div>
+              <p class="hint stage-cue"><span class="material-symbol" aria-hidden="true">check_circle</span>{{ stageCues[occurrence.stage].hint }}</p>
+            </li>
+          }
+        </ol>
+      }
+
+      @if (!loading() && !outdated() && occurrences().length) {
+        <div class="card planner-save">
+          @if (resuming) {
+            <p class="hint" role="status">Prévia retomada. Confira as datas e etapas.</p>
+            <button class="primary preview-action" type="button" (click)="savePlan()"
+                    [attr.aria-disabled]="saving() ? 'true' : null">
+              <span class="material-symbol" aria-hidden="true">bookmark_add</span>
+              {{ saving() ? 'Salvando cronograma…' : 'Salvar cronograma' }}
+            </button>
+            @if (saveError(); as error) {
+              <p class="field-error" role="alert">{{ error }}</p>
+            }
+          } @else {
+            <div class="planner-save-info">
+              <p class="hint"><span class="material-symbol" aria-hidden="true">schedule</span>{{ timeZone }}</p>
+              <p class="pill status-completed">Prévia ativa</p>
+            </div>
+            <button class="primary preview-action" type="button" (click)="continueWithAccount()">
+              <span class="material-symbol" aria-hidden="true">bookmark_add</span>
+              Entrar para salvar na agenda
+            </button>
+          }
+        </div>
+      }
+    </section>
+  </div>
+
+  <footer class="connection" [class.visually-hidden]="connectionMessage() !== 'API indisponível.'" role="status">{{ connectionMessage() }}</footer>
+</div>

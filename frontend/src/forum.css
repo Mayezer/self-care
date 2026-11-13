@@ -1,0 +1,11 @@
+.forum, .forum fieldset, .forum section, .forum article {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+}
+.forum-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+.forum article { border-top: 1px solid var(--input-line); padding-block-start: var(--space-md); }
+.forum article button { justify-self: start; }
+.forum article :is(h3, p) { overflow-wrap: anywhere; }
+.forum-text { white-space: pre-wrap; }
+.forum p[role="status"]:empty { display: none; }

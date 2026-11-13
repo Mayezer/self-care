@@ -1,0 +1,60 @@
+@if (locked()) {
+  <div class="card diary-form">
+    <h2>Diário para assinantes</h2>
+    <p>Uma assinatura ativa dá acesso ao envio e à consulta das suas fotos.</p>
+    <a class="primary" routerLink="/configuracoes/assinatura">Ver assinatura</a>
+  </div>
+} @else {
+  @if (photos(); as entries) {
+    <form class="card diary-form" (submit)="$event.preventDefault(); save(captured.value, photo)">
+      <h2>Adicionar foto</h2>
+      <p class="hint">Ao fim do acesso, as fotos ficam guardadas por 30 dias para uma eventual reativação.</p>
+      <fieldset [disabled]="saving() || loading()">
+        <div class="field">
+          <label for="diary-date">Data da foto</label>
+          <input #captured id="diary-date" type="date" [value]="today()" [max]="today()" required>
+        </div>
+        <div class="field">
+          <label for="diary-photo">Foto</label>
+          <input #photo id="diary-photo" type="file" accept="image/jpeg,image/png" aria-describedby="diary-file-hint" required>
+          <p id="diary-file-hint" class="hint">JPEG ou PNG de até 5 MiB e 4.096 pixels por lado, com até 12 megapixels.</p>
+        </div>
+        <button class="primary" type="submit">{{ saving() ? 'Aguarde…' : 'Guardar foto' }}</button>
+      </fieldset>
+      @if (error(); as message) {
+        <p class="field-error" role="alert">{{ message }}</p>
+      }
+    </form>
+    <p class="diary-message" role="status">{{ notice() }}</p>
+    <section class="diary-timeline" aria-labelledby="diary-photos-title">
+      <h2 #timeline id="diary-photos-title" tabindex="-1">Minhas fotos</h2>
+      @if (entries.length) {
+        <ol class="diary-gallery">
+          @for (entry of entries; track entry.id) {
+            <li class="card diary-photo">
+              <a [href]="photoUrl(entry.id)" target="_blank" rel="noopener"
+                 [attr.aria-label]="'Abrir foto de ' + date(entry.date) + ' em nova aba'">
+                <img [src]="photoUrl(entry.id)" alt="" loading="lazy">
+              </a>
+              <time [attr.datetime]="entry.date">{{ date(entry.date) }}</time>
+              <details>
+                <summary class="text-button" [attr.aria-label]="'Excluir foto de ' + date(entry.date)">Excluir</summary>
+                <p>Excluir esta foto do diário?</p>
+                <button class="secondary" type="button" [disabled]="saving() || loading()" (click)="remove(entry.id)">Excluir foto</button>
+              </details>
+            </li>
+          }
+        </ol>
+      } @else {
+        <p>As fotos que você guardar aparecem aqui por data.</p>
+      }
+    </section>
+  } @else if (loading()) {
+    <p role="status">Carregando diário…</p>
+  } @else {
+    @if (error(); as message) {
+      <p class="field-error diary-message" role="alert">{{ message }}</p>
+    }
+    <button class="secondary" type="button" (click)="load()">Tentar novamente</button>
+  }
+}

@@ -1,0 +1,6 @@
+.reminder-form, .reminder-fields { display: grid; gap: var(--space-md); min-width: 0; }
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+.reminder-choices, .reminder-choice { display: flex; align-items: center; gap: var(--space-sm); }
+.reminder-choices { flex-wrap: wrap; }
+.reminder-choice { min-height: var(--touch); }
+.reminder-choice input { inline-size: 1.125rem; block-size: 1.125rem; accent-color: var(--primary); }

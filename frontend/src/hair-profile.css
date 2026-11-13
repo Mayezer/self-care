@@ -1,0 +1,54 @@
+.profile-state { margin-block: var(--space-md); }
+.profile-state button { margin-top: var(--space-sm); }
+.profile-state p { font-size: inherit; }
+.hair-profile-form, .profile-fields, .profile-section { display: grid; gap: var(--space-md); }
+.profile-selects, .curl-choices {
+  display: grid;
+  gap: var(--space-sm);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.profile-selects { grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+.curl-choices { margin-top: var(--space-sm); }
+.profile-choices, .profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
+.profile-choices { margin-top: var(--space-sm); }
+.curl-details { margin-top: var(--space-md); }
+.profile-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--touch);
+  padding: var(--space-sm) 0.75rem;
+  border: 1px solid var(--input-line);
+  border-radius: var(--radius-sm);
+  background: var(--neutral);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+.profile-choice:has(:checked) {
+  color: var(--primary);
+  border-color: currentColor;
+  background: var(--tint-light);
+}
+.profile-choice:has(:disabled) { cursor: default; opacity: 0.72; }
+.profile-choice:has(:focus-visible) { outline: 2px solid var(--focus-ink); outline-offset: 2px; }
+.profile-choice input {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.profile-choice input:focus-visible { outline: none; }
+.curl-choice svg { width: 2rem; flex: 0 0 auto; color: var(--hair-ink); }
+.curl-choice { display: grid; grid-template-columns: auto 1fr; }
+.curl-choice > span { grid-column: 1 / -1; }
+.curl-choice small { display: block; color: var(--muted); }
+.profile-section [type="month"] { max-width: 16rem; }
+.profile-guide-links { margin: 0; padding-inline-start: var(--space-lg); color: var(--muted); }
+.profile-guide-footer { margin-top: var(--space-sm); }
+[data-save-status] { color: var(--completed-ink); font-weight: 600; }
+@media (min-width: 40rem) {
+  .curl-choices { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}

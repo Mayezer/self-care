@@ -1,0 +1,37 @@
+@if (state(); as current) {
+  @if (current.testMode) {
+    <p class="info-strip">Ambiente de testes do Stripe. Use somente dados de teste.</p>
+  }
+  <div role="status">
+    @if (current.active) {
+      <h2>Assinatura ativa</h2>
+      @if (current.cancelAtPeriodEnd && current.accessUntil; as end) {
+        <p>Cancelamento agendado para {{ date(end) }}.</p>
+      }
+    } @else {
+      <h2>Plano gratuito</h2>
+      @if (current.canManage) {
+        <p>Confira a situação da assinatura no portal do Stripe.</p>
+      } @else {
+        <p>Assinatura mensal por <strong>{{ price(current.monthlyPriceCents) }}</strong> para o diário privado de progresso capilar.</p>
+      }
+    }
+  </div>
+  <p>Agenda, Histórico e Ajuda básica fazem parte do plano gratuito.</p>
+  <div class="actions">
+    @if (current.canManage) {
+      <button class="primary" type="button" [disabled]="pending()" (click)="open('portal')">Gerenciar no Stripe</button>
+    } @else {
+      <button class="primary" type="button" [disabled]="pending()" (click)="open('checkout')">Ir para o pagamento</button>
+    }
+    <button class="secondary" type="button" [disabled]="pending()" (click)="load(true)">Atualizar status</button>
+    <a class="secondary" routerLink="/perfil">Voltar ao perfil</a>
+  </div>
+} @else if (pending()) {
+  <p role="status">Carregando assinatura…</p>
+} @else {
+  <button class="secondary" type="button" (click)="load()">Tentar novamente</button>
+}
+@if (error(); as message) {
+  <p class="field-error" role="alert">{{ message }}</p>
+}

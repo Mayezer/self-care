@@ -1,0 +1,18 @@
+.products-panel { margin-block: var(--space-md); }
+.products-status:not(:empty) { margin-bottom: var(--space-sm); }
+.products-error { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm) var(--space-md); }
+.products-error p { flex: 1 1 100%; }
+.product-cards { display: grid; gap: var(--space-md); margin: 0; padding: 0; list-style: none; }
+.product-card { display: grid; justify-items: start; gap: var(--space-sm); min-width: 0; }
+.product-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm); }
+.product-heading .pill { color: var(--hair-ink); background: var(--hair-bg); }
+.product-variant {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+  background: var(--neutral);
+}
+.product-usage { display: grid; gap: var(--space-sm); font-size: 0.875rem; }
+.product-usage dt { font-weight: 600; }
+.product-usage dd { color: var(--muted); }
+.product-usage ul { margin: 0; padding-inline-start: var(--space-md); }

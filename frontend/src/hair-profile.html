@@ -1,0 +1,243 @@
+@if (state() === 'loading') {
+  <p class="card profile-state" role="status" tabindex="-1" data-load-status>Carregando seu perfil…</p>
+} @else if (state() === 'unavailable') {
+  <div class="card profile-state">
+    <p role="alert">Não foi possível carregar suas respostas.</p>
+    <button class="secondary" type="button" data-load-retry (click)="load(true)">Tentar novamente</button>
+  </div>
+} @else {
+  @if (showProducts()) {
+    <nav class="hair-profile-tabs" aria-label="Meu cabelo">
+      <a routerLink="/meu-cabelo" aria-current="page">Respostas</a>
+      <a routerLink="/meu-cabelo/produtos">Produtos</a>
+    </nav>
+  }
+  @if (!hasSavedAnswers()) {
+    <div class="info-strip profile-state">
+      <span class="material-symbol" aria-hidden="true">info</span>
+      <div>
+        <p>Você ainda não tem respostas salvas. Comece por onde quiser ou pule esta etapa.</p>
+        <a class="agenda-add" routerLink="/agenda">Pular e ir à agenda</a>
+      </div>
+    </div>
+  }
+  @if (guidesAvailable() && suggestedGuides().length) {
+    <section class="card profile-state profile-section" aria-labelledby="profile-guides">
+      <div>
+        <h2 id="profile-guides">Guias em destaque</h2>
+        <p class="hint">Sugestões de leitura pelas suas respostas salvas.</p>
+      </div>
+      <ul class="profile-guide-links">
+        @for (guide of suggestedGuides(); track guide.id) {
+          <li><a class="agenda-add" [routerLink]="['/ajuda/guias', guide.id]">{{ guide.title }}</a></li>
+        }
+      </ul>
+    </section>
+  }
+  <form class="hair-profile-form" novalidate (submit)="$event.preventDefault(); save()">
+    <fieldset class="profile-fields" [disabled]="saving() || confirmingClear()">
+      <legend class="visually-hidden">Respostas opcionais</legend>
+      <section class="card profile-section" aria-labelledby="hair-texture">
+        <h2 id="hair-texture">Como é seu cabelo?</h2>
+        <fieldset [attr.aria-describedby]="errors().curlPattern ? 'curl-hint curl-error' : 'curl-hint'">
+          <legend>Curvatura</legend>
+          <p class="hint" id="curl-hint">Escolha o grupo que mais se parece com seu cabelo. O subtipo é opcional.</p>
+          @if (guidesAvailable()) {
+            <a class="agenda-add" [routerLink]="['/ajuda/guias', guideTopics.curl.id]">Consultar o guia visual</a>
+          }
+          <div class="curl-choices">
+            @for (group of curlGroups; track group.value) {
+              <label class="profile-choice curl-choice">
+                <input type="radio" name="curlPattern" [value]="group.value" [checked]="patternChoice() === group.value"
+                       [attr.aria-invalid]="errors().curlPattern ? 'true' : null"
+                       [attr.data-profile-field]="patternChoice() === group.value ? 'curlPattern' : null"
+                       (change)="choosePattern(group.value)">
+                <svg aria-hidden="true" focusable="false" viewBox="0 0 36 26">
+                  <path [attr.d]="group.path" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span>{{ group.label }} <small>{{ group.subtypes[0].code }}–{{ group.subtypes[2].code }}</small></span>
+              </label>
+            }
+            <label class="profile-choice">
+              <input type="radio" name="curlPattern" value="MULTIPLE" [checked]="patternChoice() === 'MULTIPLE'"
+                     [attr.aria-invalid]="errors().curlPattern ? 'true' : null"
+                     [attr.data-profile-field]="patternChoice() === 'MULTIPLE' ? 'curlPattern' : null"
+                     (change)="choosePattern('MULTIPLE')">Mais de um padrão
+            </label>
+            <label class="profile-choice">
+              <input type="radio" name="curlPattern" value="UNKNOWN" [checked]="patternChoice() === 'UNKNOWN'"
+                     [attr.aria-invalid]="errors().curlPattern ? 'true' : null"
+                     [attr.data-profile-field]="patternChoice() === 'UNKNOWN' ? 'curlPattern' : null"
+                     (change)="choosePattern('UNKNOWN')">Não sei
+            </label>
+            <label class="profile-choice">
+              <input type="radio" name="curlPattern" value="" [checked]="patternChoice() === ''"
+                     [attr.data-profile-field]="patternChoice() === '' ? 'curlPattern' : null"
+                     [attr.aria-invalid]="errors().curlPattern ? 'true' : null"
+                     (change)="choosePattern('')">Sem resposta
+            </label>
+          </div>
+          @if (patternChoice() === 'MULTIPLE') {
+            <fieldset class="curl-details" aria-describedby="curl-multiple-hint">
+              <legend>Quais padrões você percebe?</legend>
+              <p class="hint" id="curl-multiple-hint">Escolha até dois grupos diferentes. {{ groups().length }} de 2 selecionados.</p>
+              <div class="profile-choices">
+                @for (group of curlGroups; track group.value) {
+                  @let selected = selectedGroups().includes(group);
+                  <label class="profile-choice">
+                    <input type="checkbox" [checked]="selected" [disabled]="!selected && groups().length >= 2"
+                           (change)="toggleGroup(group.value, $any($event.target).checked)">
+                    {{ group.label }}
+                  </label>
+                }
+              </div>
+            </fieldset>
+          }
+          @if (selectedGroups().length) {
+            <div class="profile-selects curl-details">
+              @for (group of selectedGroups(); track group.value) {
+                <div class="field">
+                  <label [for]="'subtype-' + group.value">Subtipo · {{ group.label }}</label>
+                  <select [id]="'subtype-' + group.value"
+                          [attr.aria-invalid]="errors().curlPattern ? 'true' : null"
+                          [attr.aria-describedby]="errors().curlPattern ? 'curl-error' : null"
+                          data-profile-field="curlPattern" (change)="chooseSubtype(group.value, $any($event.target).value)">
+                    <option value="" [selected]="!subtypeOf(group.value)">Sem resposta</option>
+                    @for (subtype of group.subtypes; track subtype.code) {
+                      <option [value]="subtype.code" [selected]="subtypeOf(group.value) === subtype.code">{{ subtype.code }}</option>
+                    }
+                  </select>
+                </div>
+              }
+            </div>
+          }
+          @if (errors().curlPattern; as message) {
+            <p class="field-error" id="curl-error">{{ message }}</p>
+          }
+        </fieldset>
+        <div class="profile-selects">
+          @for (entry of textureFields; track entry.field) {
+            <div class="field">
+              <label [for]="entry.field">{{ entry.label }}</label>
+              @if (entry.hint; as hint) {
+                <p class="hint" [id]="entry.field + '-hint'">{{ hint }}</p>
+              }
+              <select [id]="entry.field" [attr.data-profile-field]="entry.field"
+                      [attr.aria-invalid]="errors()[entry.field] ? 'true' : null"
+                      [attr.aria-describedby]="errors()[entry.field] ? entry.field + '-error' : entry.hint ? entry.field + '-hint' : null"
+                      (change)="chooseSingle(entry.field, $any($event.target).value)">
+                <option value="" [selected]="!answers()[entry.field]">Sem resposta</option>
+                @for (option of entry.options; track option.value) {
+                  <option [value]="option.value" [selected]="answers()[entry.field] === option.value">{{ option.label }}</option>
+                }
+              </select>
+              @if (errors()[entry.field]; as message) {
+                <p class="field-error" [id]="entry.field + '-error'">{{ message }}</p>
+              }
+            </div>
+          }
+        </div>
+      </section>
+
+      @for (entry of multiFields; track entry.field) {
+        <section class="card profile-section" [attr.aria-labelledby]="entry.field + '-title'">
+          <h2 [id]="entry.field + '-title'">{{ entry.title }}</h2>
+          @if (entry.field === 'heatTools') {
+            <div class="field">
+              <label for="heatFrequency">Com que frequência você usa calor?</label>
+              <select id="heatFrequency" data-profile-field="heatFrequency"
+                      [attr.aria-invalid]="errors().heatFrequency ? 'true' : null"
+                      [attr.aria-describedby]="errors().heatFrequency ? 'heatFrequency-error' : null"
+                      (change)="chooseSingle('heatFrequency', $any($event.target).value)">
+                <option value="" [selected]="!answers().heatFrequency">Sem resposta</option>
+                @for (option of heatFrequencies; track option.value) {
+                  <option [value]="option.value" [selected]="answers().heatFrequency === option.value">{{ option.label }}</option>
+                }
+              </select>
+              @if (errors().heatFrequency; as message) {
+                <p class="field-error" id="heatFrequency-error">{{ message }}</p>
+              }
+            </div>
+          }
+          @if (entry.field !== 'heatTools' || answers().heatFrequency !== 'NEVER') {
+            <fieldset [attr.aria-describedby]="errors()[entry.field] ? entry.field + '-hint ' + entry.field + '-error' : entry.field + '-hint'">
+              <legend>{{ entry.label }}</legend>
+              <p class="hint" [id]="entry.field + '-hint'">
+                {{ entry.field === 'heatTools' ? 'Selecione quantas quiser.' : 'Você pode marcar várias opções. As duas últimas são exclusivas.' }}
+              </p>
+              <div class="profile-choices">
+                @for (option of entry.options; track option.value) {
+                  <label class="profile-choice">
+                    <input type="checkbox" [checked]="answers()[entry.field]?.includes(option.value) ?? false"
+                           [attr.data-profile-field]="entry.field"
+                           [attr.aria-invalid]="errors()[entry.field] ? 'true' : null"
+                           [attr.aria-describedby]="errors()[entry.field] ? entry.field + '-error' : null"
+                           (change)="toggleOption(entry.field, option.value, $any($event.target).checked)">
+                    {{ option.label }}
+                  </label>
+                }
+              </div>
+              @if (errors()[entry.field]; as message) {
+                <p class="field-error" [id]="entry.field + '-error'">{{ message }}</p>
+              }
+            </fieldset>
+          }
+          @if (entry.field === 'chemicalTreatments' && hasChemicalTreatment()) {
+            <div class="field">
+              <label for="lastChemicalTreatmentMonth">Mês e ano do último procedimento</label>
+              <input id="lastChemicalTreatmentMonth" type="month" min="0001-01" [max]="today().slice(0, 7)"
+                     placeholder="AAAA-MM" [value]="answers().lastChemicalTreatmentMonth ?? ''"
+                     data-profile-field="lastChemicalTreatmentMonth"
+                     [attr.aria-invalid]="errors().lastChemicalTreatmentMonth ? 'true' : null"
+                     [attr.aria-describedby]="errors().lastChemicalTreatmentMonth ? 'chemical-month-error' : 'chemical-month-hint'"
+                     (input)="chooseSingle('lastChemicalTreatmentMonth', $any($event.target).value)">
+              <p class="hint" id="chemical-month-hint">Opcional. Informe o mês atual ou um mês anterior.</p>
+              @if (errors().lastChemicalTreatmentMonth; as message) {
+                <p class="field-error" id="chemical-month-error">{{ message }}</p>
+              }
+            </div>
+          }
+        </section>
+      }
+    </fieldset>
+
+    <div class="card profile-section">
+      @if (confirmingClear()) {
+        <p>Limpar as respostas salvas do perfil? Esta ação mantém seu cronograma e seu histórico.</p>
+        <div class="profile-actions">
+          <button class="secondary" type="button" data-cancel-clear (click)="cancelClear()">Cancelar</button>
+          <button class="primary" type="button" (click)="save(true)">Sim, limpar respostas</button>
+        </div>
+      } @else {
+        <div class="profile-actions">
+          <button class="primary" type="submit" [disabled]="saving()">{{ saving() ? 'Salvando…' : 'Salvar respostas' }}</button>
+          @if (hasSavedAnswers()) {
+            <button class="secondary" type="button" data-clear-profile [disabled]="saving()" (click)="requestClear()">Limpar respostas</button>
+          }
+          <a class="agenda-add" routerLink="/agenda">Voltar à agenda</a>
+        </div>
+      }
+      @if (feedback() || hasErrors()) {
+        <p class="field-error" role="alert" tabindex="-1" data-save-feedback>{{ feedback() || 'Confira os campos indicados. Suas respostas continuam no formulário.' }}</p>
+      }
+      <p role="status" tabindex="-1" data-save-status [hidden]="!saveResult()">
+        {{ saveResult() === 'saved' ? 'Respostas salvas.' : saveResult() === 'cleared' ? 'Respostas do perfil removidas.' : '' }}
+      </p>
+      @if (saveResult() === 'saved' && showProducts()) {
+        <a class="agenda-add" routerLink="/meu-cabelo/produtos">Ver sugestões de produtos</a>
+      }
+    </div>
+  </form>
+  @if (guidesAvailable()) {
+    <div class="profile-actions profile-guide-footer">
+      <a class="agenda-add" [routerLink]="['/ajuda/guias', guideTopics.elasticity.id]">FAQ de elasticidade</a>
+      <a class="agenda-add" [routerLink]="['/ajuda/guias', guideTopics.porosity.id]">FAQ de porosidade</a>
+    </div>
+  }
+}
+@if (state() !== 'ready') {
+  <a class="agenda-add" routerLink="/agenda">Voltar à agenda</a>
+}
+@if (guidesAvailable()) {
+  <a class="agenda-add" routerLink="/ajuda" fragment="guias">Abrir todos os guias da Ajuda</a>
+}

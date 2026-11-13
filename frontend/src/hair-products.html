@@ -1,0 +1,83 @@
+@let current = state();
+@if (current.kind === 'ready') {
+  <nav class="hair-profile-tabs" aria-label="Meu cabelo">
+    <a routerLink="/meu-cabelo">Respostas</a>
+    <a routerLink="/meu-cabelo/produtos" aria-current="page">Produtos</a>
+  </nav>
+}
+
+<section class="products-panel" aria-label="Sugestões de produtos" #panel tabindex="-1">
+  <p class="products-status" role="status">
+    @switch (current.kind) {
+      @case ('loading') { Carregando suas sugestões… }
+      @case ('no-profile') { Salve pelo menos uma resposta em Meu cabelo para receber sugestões. }
+      @case ('unavailable') { As sugestões de produtos estão indisponíveis no momento. }
+      @case ('ready') {
+        @if (!current.cards.length) {
+          Ainda não há sugestões para suas respostas salvas. Se quiser, revise o que informou sobre a raiz, os fios ou o uso de calor.
+        } @else {
+          Sugestões de cuidado com base nas suas respostas salvas.
+        }
+      }
+    }
+  </p>
+
+  @switch (current.kind) {
+    @case ('no-profile') {
+      <a class="agenda-add" routerLink="/meu-cabelo">Preencher respostas</a>
+    }
+    @case ('unavailable') {
+      <a class="agenda-add" routerLink="/meu-cabelo">Voltar às respostas</a>
+    }
+    @case ('error') {
+      <div class="card products-error">
+        <p role="alert">Não foi possível carregar suas sugestões.</p>
+        <button class="secondary" type="button" (click)="panel.focus(); load()">Tentar novamente</button>
+        <a class="agenda-add" routerLink="/meu-cabelo">Voltar às respostas</a>
+      </div>
+    }
+    @case ('ready') {
+      @if (!current.cards.length) {
+        <a class="agenda-add" routerLink="/meu-cabelo">Revisar respostas</a>
+      } @else {
+        <ul class="product-cards" role="list">
+          @for (card of current.cards; track card.category) {
+            <li class="card product-card">
+              <div class="product-heading">
+                <h2>{{ card.title }}</h2>
+                @if (card.optional) { <span class="pill">Opcional</span> }
+              </div>
+              <p>{{ card.reason }}</p>
+              @if (card.variant; as variant) {
+                <div class="product-variant">
+                  <h3>{{ variant.brand }} · {{ variant.name }}</h3>
+                  <p>{{ variant.presentation }}</p>
+                </div>
+              } @else {
+                <p class="hint">Orientação de categoria. Nenhum produto específico do catálogo corresponde a esta sugestão.</p>
+              }
+              <dl class="product-usage">
+                <div><dt>Onde aplicar</dt><dd>{{ card.area }}</dd></div>
+                <div><dt>Como usar</dt><dd>{{ card.instructions }}</dd></div>
+                @if (card.variant; as variant) {
+                  <div><dt>Condição dos fios</dt><dd>{{ variant.hairCondition }}</dd></div>
+                  <div><dt>Enxágue</dt><dd>{{ variant.rinse === 'RINSE_OFF' ? 'Enxaguar' : 'Sem enxágue' }}</dd></div>
+                  @if (variant.warnings.length) {
+                    <div>
+                      <dt>Cuidados do rótulo</dt>
+                      <dd><ul>@for (warning of variant.warnings; track $index) { <li>{{ warning }}</li> }</ul></dd>
+                    </div>
+                  }
+                }
+              </dl>
+              @if (card.variant; as variant) {
+                <a class="agenda-add" [href]="variant.manufacturerUrl" rel="noreferrer"
+                   [attr.aria-label]="'Fonte do fabricante: ' + variant.brand + ' · ' + variant.name">Fonte do fabricante</a>
+              }
+            </li>
+          }
+        </ul>
+      }
+    }
+  }
+</section>

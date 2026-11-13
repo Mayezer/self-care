@@ -1,0 +1,12 @@
+:host { display: block; }
+.diary-form { display: grid; gap: var(--space-md); justify-items: start; }
+.diary-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; width: 100%; display: grid; gap: var(--space-md); }
+.diary-form input[type="file"] { width: 100%; }
+.diary-message:not(:empty) { margin-block: var(--space-md); }
+.diary-timeline { margin-top: var(--space-lg); }
+.diary-timeline > h2 { margin-bottom: var(--space-sm); }
+.diary-gallery { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-md); grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+.diary-photo { display: grid; justify-items: start; gap: var(--space-sm); min-width: 0; }
+.diary-photo a { display: block; width: 100%; }
+.diary-photo img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: contain; background: var(--neutral); border-radius: var(--radius-sm); }
+.diary-photo time { font-weight: 700; }

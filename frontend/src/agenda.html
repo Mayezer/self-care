@@ -1,0 +1,248 @@
+@if (showNewCare && account(); as current) {
+  <app-new-care [today]="current.today" />
+} @else {
+  <div class="page-width page-content" [class.history-page]="showHistory" [class.hair-profile-page]="showHairProfile || showHairProducts || showHairDiary || showReminders" [class.agenda-width]="isAgenda">
+    @if (account(); as current) {
+      @if (showProfile) {
+        <section class="card agenda-card" aria-labelledby="profile-title">
+          <h1 #heading id="profile-title" tabindex="-1">Perfil</h1>
+          <div class="profile-account">
+            <span class="editorial-icon material-symbol" aria-hidden="true">person</span>
+            <div>
+              <h2>Minha conta</h2>
+              <p>{{ current.email ?? current.username }}</p>
+            </div>
+          </div>
+          <app-account-sessions (signedOut)="sessionsEnded()" (sessionExpired)="loadAgenda()" />
+          <app-password-change (changed)="sessionsEnded('Senha alterada. Entre com a nova senha.')" (sessionExpired)="loadAgenda()" />
+          @if (current.hairProfileAvailable) {
+            <a class="profile-hair-link" routerLink="/meu-cabelo">
+              <span class="category-icon" data-category="HAIR" aria-hidden="true"><span class="material-symbol">spa</span></span>
+              <span><strong>Meu cabelo</strong><span class="hint">Perfil opcional e privado</span></span>
+              <span class="material-symbol" aria-hidden="true">chevron_right</span>
+            </a>
+          }
+          @if (current.hairDiaryAvailable) {
+            <a class="profile-hair-link" routerLink="/diario-capilar">
+              <span class="category-icon" data-category="HAIR" aria-hidden="true"><span class="material-symbol">photo_camera</span></span>
+              <span><strong>Diário capilar</strong><span class="hint">Fotos privadas da sua evolução</span></span>
+              <span class="material-symbol" aria-hidden="true">chevron_right</span>
+            </a>
+          }
+          @if (current.forumAvailable) {
+            <a class="profile-hair-link" routerLink="/forum">
+              <span class="material-symbol" aria-hidden="true">forum</span>
+              <span><strong>Fórum</strong><span class="hint">Relatos e avaliações de produtos</span></span>
+              <span class="material-symbol" aria-hidden="true">chevron_right</span>
+            </a>
+          }
+          @if (current.remindersAvailable || current.billingAvailable) {
+            <section aria-labelledby="profile-settings-title">
+              <h2 id="profile-settings-title">Configurações</h2>
+              @if (current.remindersAvailable) {
+                <a class="agenda-add" routerLink="/configuracoes/lembretes">Lembretes</a>
+              }
+              @if (current.billingAvailable) {
+                <a class="agenda-add" routerLink="/configuracoes/assinatura">Assinatura</a>
+              }
+            </section>
+          }
+          <button class="secondary" type="button" [disabled]="pending()" (click)="logout()">
+            {{ pending() ? 'Saindo…' : 'Sair da conta' }}
+          </button>
+          @if (error(); as message) {
+            <p class="field-error" role="alert">{{ message }}</p>
+          }
+        </section>
+      } @else if (showForum) {
+        <header class="intro">
+          <h1 #heading tabindex="-1">Fórum</h1>
+          @if (current.forumAvailable) {
+            <p>Compartilhe um relato de autocuidado ou avalie um produto. Cada envio passa por revisão.</p>
+          } @else {
+            <p>O fórum está indisponível no momento.</p>
+          }
+        </header>
+        @if (current.forumAvailable) {
+          <app-forum (sessionExpired)="loadAgenda()" />
+        }
+      } @else if (showHairProfile) {
+        <header class="intro hair-profile-intro">
+          <p class="eyebrow">Perfil privado · opcional</p>
+          <h1 #heading tabindex="-1">Meu cabelo</h1>
+          @if (current.hairProfileAvailable) {
+            <p>Responda só ao que quiser. Você pode editar ou limpar suas respostas quando quiser. Seu cronograma fica como está.</p>
+          }
+        </header>
+        @if (current.hairProfileAvailable) {
+          <app-hair-profile [today]="current.today" [guidesAvailable]="current.guidesAvailable"
+                            [productsAvailable]="current.hairProductsAvailable" (sessionExpired)="loadAgenda()" />
+        } @else {
+          <div class="card agenda-card">
+            <p>O perfil capilar está indisponível no momento.</p>
+            <a class="secondary" routerLink="/agenda">Voltar à agenda</a>
+          </div>
+        }
+      } @else if (showHairProducts) {
+        <header class="intro hair-profile-intro">
+          <p class="eyebrow">Meu cabelo</p>
+          <h1 #heading tabindex="-1">Produtos</h1>
+        </header>
+        @if (current.hairProductsAvailable && current.hairProfileAvailable) {
+          <app-hair-products (sessionExpired)="loadAgenda(true)" />
+        } @else {
+          <div class="card hair-products-unavailable">
+            <p>As sugestões de produtos estão indisponíveis no momento.</p>
+            @if (current.hairProfileAvailable) {
+              <a class="agenda-add" routerLink="/meu-cabelo">Voltar às respostas</a>
+            } @else {
+              <a class="agenda-add" routerLink="/agenda">Voltar à agenda</a>
+            }
+          </div>
+        }
+      } @else if (showHairDiary) {
+        <header class="intro hair-profile-intro">
+          <h1 #heading tabindex="-1">Diário capilar</h1>
+          <p>Registre fotos do seu cabelo e acompanhe as mudanças ao longo do tempo.</p>
+        </header>
+        @if (current.hairDiaryAvailable) {
+          <app-hair-diary [today]="current.today" (sessionExpired)="loadAgenda()" />
+        } @else {
+          <p class="info-strip">O diário capilar está indisponível no momento.</p>
+        }
+      } @else if (showSubscription) {
+        <section class="card agenda-card" aria-labelledby="subscription-title">
+          <h1 #heading id="subscription-title" tabindex="-1">Assinatura</h1>
+          @if (current.billingAvailable) {
+            <app-subscription-settings (sessionExpired)="loadAgenda()" />
+          } @else {
+            <p>A assinatura está indisponível no momento.</p>
+            <a class="secondary" routerLink="/perfil">Voltar ao perfil</a>
+          }
+        </section>
+      } @else if (showReminders) {
+        <header class="intro hair-profile-intro">
+          <p class="eyebrow">Configurações</p>
+          <h1 #heading tabindex="-1">Lembretes</h1>
+          <p>Escolha quais cuidados mostram um lembrete com horário na sua agenda.</p>
+        </header>
+        @if (current.remindersAvailable) {
+          <app-reminder-settings (sessionExpired)="loadAgenda()" />
+        } @else {
+          <div class="card agenda-card">
+            <p>Lembretes indisponíveis no momento.</p>
+            <a class="secondary" routerLink="/agenda">Voltar à agenda</a>
+          </div>
+        }
+      } @else if (showHistory) {
+        <h1 #heading class="screen-title" tabindex="-1">{{ pageTitle }}</h1>
+        <app-history [recorded]="careRecorded" [today]="current.today" (sessionExpired)="loadAgenda()" />
+        <section class="card history-next-steps" aria-labelledby="history-next-title">
+          <div>
+            <span class="editorial-icon material-symbol" aria-hidden="true">spa</span>
+            <div>
+              <h2 id="history-next-title">Plano de cuidados</h2>
+              <p>Abra a agenda para ver os próximos cuidados e gerenciar suas rotinas.</p>
+            </div>
+          </div>
+          <a class="primary" routerLink="/novo-cuidado" [queryParams]="{ modo: 'realizado' }">
+            <span class="material-symbol" aria-hidden="true">add</span> Registrar cuidado realizado
+          </a>
+          <a class="secondary" routerLink="/agenda">Abrir agenda</a>
+        </section>
+      } @else {
+        <div class="section-heading">
+          <h1 #heading class="screen-title" tabindex="-1">{{ pageTitle }}</h1>
+          @if (current.remindersAvailable) {
+            <a class="agenda-add" routerLink="/configuracoes/lembretes">Configurar lembretes</a>
+          }
+        </div>
+        <app-agenda-week [scheduleNotice]="scheduleNotice" (sessionExpired)="loadAgenda()" />
+      }
+    } @else {
+      <section class="card agenda-card" aria-labelledby="agenda-title">
+        <h1 #heading id="agenda-title" tabindex="-1">{{ hairPreviewDraft ? 'Entre para retomar a prévia' : pageTitle }}</h1>
+        @if (checking()) {
+          <p role="status">Verificando sua sessão…</p>
+        } @else if (unavailable()) {
+          <p role="alert">Não foi possível carregar {{ accountArea }}. Tente novamente.</p>
+          <button class="primary" type="button" (click)="loadAgenda()">Tentar novamente</button>
+        } @else if (identity(); as step) {
+          <app-identity-flow [initial]="step.mfa" [needsEmail]="step.needsEmail" (cancelled)="closeIdentity()"
+                             (authenticated)="identityAuthenticated()" (resetDone)="passwordReset()" />
+        } @else {
+      @switch (mode()) {
+        @case ('register') { <p>Informe seu e-mail para receber o código de confirmação.</p> }
+        @case ('confirm') { <p>Digite o código que você recebeu por e-mail e crie sua senha.</p> }
+        @default {
+          <p>{{ hairPreviewDraft
+            ? 'Você voltará ao cronograma capilar com suas escolhas.'
+            : 'Entre na sua conta para acessar ' + accountArea + '.' }}</p>
+        }
+      }
+      <form method="post" (submit)="$event.preventDefault();
+        mode() === 'register' ? requestCode(emailInput.value) : mode() === 'confirm'
+          ? confirm(emailInput.value, codeInput, passwordInput) : login(emailInput.value, passwordInput)">
+        <div class="field">
+          <label for="account-email">{{ mode() === 'login' ? 'E-mail ou nome de usuário' : 'E-mail' }}</label>
+          <input #emailInput id="account-email" name="email" [type]="mode() === 'login' ? 'text' : 'email'"
+                 inputmode="email" autocomplete="username" maxlength="254" required
+                 autocapitalize="none" spellcheck="false" [readOnly]="pending()"
+                 [attr.aria-invalid]="errors().email ? 'true' : null"
+                 [attr.aria-describedby]="errors().email ? 'account-email-error' : null">
+          @if (errors().email; as message) {
+            <p class="field-error" id="account-email-error">{{ message }}</p>
+          }
+        </div>
+        <div class="field" [hidden]="mode() !== 'confirm'">
+          <label for="account-code">Código de confirmação</label>
+          <input #codeInput id="account-code" name="code" autocomplete="one-time-code" autocapitalize="none"
+                 spellcheck="false" [disabled]="mode() !== 'confirm'" required
+                 [attr.aria-invalid]="errors().code ? 'true' : null"
+                 [attr.aria-describedby]="errors().code ? 'account-code-error' : null">
+          @if (errors().code; as message) {
+            <p class="field-error" id="account-code-error">{{ message }}</p>
+          }
+        </div>
+        <div class="field" [hidden]="mode() === 'register'">
+          <label for="account-password">Senha</label>
+          <input #passwordInput id="account-password" name="password" type="password" required
+                 [disabled]="mode() === 'register'"
+                 [attr.autocomplete]="mode() === 'confirm' ? 'new-password' : 'current-password'"
+                 [attr.aria-invalid]="errors().password ? 'true' : null"
+                 [attr.aria-describedby]="errors().password ? 'account-password-error' : mode() === 'confirm' ? 'password-hint' : null">
+          @if (errors().password; as message) {
+            <p class="field-error" id="account-password-error">{{ message }}</p>
+          } @else if (mode() === 'confirm') {
+            <p class="hint" id="password-hint">Use de 15 a 128 caracteres.</p>
+          }
+        </div>
+        <button class="primary" type="submit" [disabled]="pending()">
+          {{ pending() ? 'Aguarde…' : mode() === 'register' ? 'Enviar código' : mode() === 'confirm' ? 'Confirmar e criar conta' : 'Entrar' }}
+        </button>
+        @if (mode() === 'register') {
+          <button class="secondary" type="button" [disabled]="pending()" (click)="switchMode('confirm')">Já tenho um código</button>
+        } @else if (mode() === 'confirm') {
+          <button class="secondary" type="button" [disabled]="pending()" (click)="requestCode(emailInput.value)">Reenviar código</button>
+        }
+        @if (registrationEnabled()) {
+          <button class="secondary" type="button" [disabled]="pending()"
+                (click)="passwordInput.value = ''; codeInput.value = ''; switchMode(mode() === 'login' ? 'register' : 'login')">
+            {{ mode() === 'login' ? 'Quero criar uma conta' : 'Já tenho conta' }}
+          </button>
+        }
+        @if (mode() === 'login') {
+          <button class="secondary" type="button" [disabled]="pending()" (click)="requestPasswordRecovery()">Esqueci minha senha</button>
+        }
+      </form>
+        }
+    @if (error(); as message) {
+      <p class="field-error" role="alert">{{ message }}</p>
+    }
+    @if (notice(); as message) {
+      <p role="status">{{ message }}</p>
+    }
+      </section>
+    }
+  </div>
+}

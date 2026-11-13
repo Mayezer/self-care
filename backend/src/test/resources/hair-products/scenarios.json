@@ -1,0 +1,89 @@
+[
+  {
+    "id": "oily-dry-fine",
+    "title": "Raiz oleosa e pontas ressecadas",
+    "description": "Fios lisos e finos, oleosidade frequente na raiz e ressecamento percebido.",
+    "answers": {
+      "curlPattern": { "kind": "SINGLE", "groups": [{ "group": "STRAIGHT" }] },
+      "strandThickness": "FINE",
+      "rootOiliness": "OFTEN",
+      "observations": ["DRYNESS"]
+    }
+  },
+  {
+    "id": "fine-mixed",
+    "title": "Fios finos com ondas e cachos",
+    "description": "Ondas e cachos no mesmo perfil, com fios finos e frizz percebido.",
+    "answers": {
+      "curlPattern": { "kind": "MULTIPLE", "groups": [{ "group": "WAVY", "subtype": "2C" }, { "group": "CURLY", "subtype": "3A" }] },
+      "strandThickness": "FINE",
+      "observations": ["FRIZZ"]
+    }
+  },
+  {
+    "id": "colored-mixed",
+    "title": "Ondas, cachos e tintura",
+    "description": "Dois padrões selecionados, tintura informada e raiz frequentemente oleosa.",
+    "answers": {
+      "curlPattern": { "kind": "MULTIPLE", "groups": [{ "group": "WAVY" }, { "group": "CURLY" }] },
+      "chemicalTreatments": ["DYE"],
+      "rootOiliness": "OFTEN"
+    }
+  },
+  {
+    "id": "coily-no-heat",
+    "title": "Crespo ressecado sem calor",
+    "description": "Fios crespos e grossos, com ressecamento e frequência de calor marcada como Nunca.",
+    "answers": {
+      "curlPattern": { "kind": "SINGLE", "groups": [{ "group": "COILY" }] },
+      "strandThickness": "THICK",
+      "observations": ["DRYNESS"],
+      "heatFrequency": "NEVER"
+    }
+  },
+  {
+    "id": "bleach-flat-iron",
+    "title": "Descoloração, quebra e chapinha",
+    "description": "Descoloração e quebra informadas. A única ferramenta selecionada foi chapinha.",
+    "answers": { "chemicalTreatments": ["BLEACH"], "observations": ["BREAKAGE"], "heatTools": ["FLAT_IRON"] }
+  },
+  {
+    "id": "frequency-only",
+    "title": "Uso ocasional de calor",
+    "description": "A frequência foi informada. Curvatura e ferramenta não foram especificadas.",
+    "answers": { "curlPattern": { "kind": "UNKNOWN" }, "heatFrequency": "LESS_THAN_WEEKLY" }
+  },
+  {
+    "id": "mixed-tools",
+    "title": "Secador e modelador",
+    "description": "Duas ferramentas foram selecionadas, com a frequência de calor em Não sei.",
+    "answers": { "heatFrequency": "UNKNOWN", "heatTools": ["CURLING_IRON", "DRYER"] }
+  },
+  {
+    "id": "curly-dry",
+    "title": "Cacheado ressecado com secador",
+    "description": "Fios cacheados com ressecamento e uso de secador. A oleosidade ficou em branco.",
+    "answers": {
+      "curlPattern": { "kind": "SINGLE", "groups": [{ "group": "CURLY", "subtype": "3B" }] },
+      "observations": ["DRYNESS"],
+      "heatTools": ["DRYER"]
+    }
+  },
+  {
+    "id": "insufficient",
+    "title": "Perfil com respostas descritivas",
+    "description": "Comprimento preenchido, curvatura e frequência em Não sei, e Nenhum nas observações.",
+    "answers": {
+      "visualLength": "AT_SHOULDERS",
+      "curlPattern": { "kind": "UNKNOWN" },
+      "observations": ["NONE"],
+      "heatFrequency": "UNKNOWN"
+    }
+  },
+  {
+    "id": "empty",
+    "title": "Perfil limpo",
+    "description": "A pessoa limpou as respostas salvas.",
+    "answers": {}
+  }
+]

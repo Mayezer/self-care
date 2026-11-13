@@ -1,0 +1,81 @@
+<p #feedback class="agenda-feedback" role="status" tabindex="-1">{{ notice() ?? (recorded() ? 'Cuidado salvo no histórico.' : '') }}</p>
+@if (actionError(); as message) {
+  <p #errorFeedback class="agenda-feedback field-error" role="alert" tabindex="-1">{{ message }}</p>
+}
+
+@if (loading()) {
+  <p class="info-strip" role="status">Carregando o histórico…</p>
+} @else if (failed()) {
+  <section class="card">
+    <p role="alert">Não foi possível carregar o histórico. Tente novamente.</p>
+    <button class="secondary preview-action" type="button" (click)="load()">Tentar novamente</button>
+  </section>
+} @else {
+  <section class="card history-overview" aria-labelledby="history-overview-title">
+    <div class="section-heading">
+      <h2 class="eyebrow" id="history-overview-title">
+        <span class="material-symbol" aria-hidden="true">calendar_month</span> Visão de {{ monthLabel() }}
+      </h2>
+      <span class="pill status-completed"><span class="material-symbol" aria-hidden="true">trending_up</span> Seu ritmo</span>
+    </div>
+    <dl class="history-metrics">
+      <div>
+        <dt>Cuidados no mês</dt><dd><span class="material-symbol" aria-hidden="true">calendar_today</span>{{ monthly().total }}</dd>
+      </div>
+      <div>
+        <dt>Concluídos</dt><dd><span class="material-symbol success-ink" aria-hidden="true">check_circle</span>{{ monthly().completed }}</dd>
+      </div>
+      <div>
+        <dt>Pulados</dt><dd><span class="material-symbol" aria-hidden="true">redo</span>{{ monthly().skipped }}</dd>
+      </div>
+    </dl>
+    @if (monthly().total) {
+      <div class="progress-track" aria-hidden="true"><span [style.width.%]="100 * monthly().completed / monthly().total"></span></div>
+    }
+  </section>
+
+  <app-category-filter [selected]="category()" (selectedChange)="category.set($event)" />
+
+  <section class="history-events" aria-labelledby="history-title">
+    <div class="section-heading">
+      <h2 id="history-title">Linha do tempo</h2>
+      <p class="hint" role="status">{{ visibleRecords().length }} {{ visibleRecords().length === 1 ? 'registro' : 'registros' }}</p>
+    </div>
+    <p class="hint">Cuidados concluídos e pulados, do mais recente ao mais antigo.</p>
+    @if (visibleRecords().length) {
+      <ol class="sessions history-timeline" role="list">
+        @for (item of visibleRecords(); track item.id) {
+          <li class="card history-entry" [attr.data-category]="item.category">
+            <div class="item-tags">
+              <span class="care-category-badge" [attr.data-category]="item.category">
+                <span class="material-symbol" aria-hidden="true">{{ categoryIcons[item.category] }}</span>{{ categoryLabels[item.category] }}
+              </span>
+              <time class="hint history-date" [attr.datetime]="item.actionDate">
+                <span class="material-symbol" aria-hidden="true">schedule</span>
+                <span class="visually-hidden">{{ dateLabel(item.actionDate) }}</span>
+                <span aria-hidden="true">{{ actionDateLabel(item.actionDate) }}</span>
+              </time>
+              <span class="pill history-status" [attr.data-status]="item.status">
+                <span class="material-symbol" aria-hidden="true">{{ statusIcons[item.status] }}</span>{{ statusLabels[item.status] }}
+              </span>
+            </div>
+            <h3>{{ item.title }}</h3>
+            @if (itemDetails(item, false); as details) {
+              <p class="history-detail care-description"><span class="material-symbol" aria-hidden="true">{{ categoryIcons[item.category] }}</span>{{ details }}</p>
+            }
+            @if (item.canUndo) {
+              <button class="choice-button undo-action" type="button" [attr.aria-disabled]="undoing()"
+                      [attr.aria-label]="'Desfazer ' + (item.status === 'COMPLETED' ? 'conclusão' : 'pulo') + ' de ' + item.title + ' em ' + dateLabel(item.actionDate)"
+                      (click)="undo(item)"><span class="material-symbol" aria-hidden="true">undo</span> Desfazer</button>
+            }
+          </li>
+        }
+      </ol>
+    } @else {
+      <div class="card empty-state">
+        <span class="material-symbol" aria-hidden="true">history</span>
+        <p>{{ category() ? 'Nenhum cuidado concluído ou pulado nesta categoria.' : 'Você ainda não tem cuidados concluídos ou pulados.' }}</p>
+      </div>
+    }
+  </section>
+}
