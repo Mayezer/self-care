@@ -63,6 +63,9 @@
             @if (itemDetails(item, false); as details) {
               <p class="history-detail care-description"><span class="material-symbol" aria-hidden="true">{{ categoryIcons[item.category] }}</span>{{ details }}</p>
             }
+            @if (item.skinSteps?.length) {
+              <app-skin-routine-steps [steps]="item.skinSteps" [title]="item.title" />
+            }
             @if (item.canUndo) {
               <button class="choice-button undo-action" type="button" [attr.aria-disabled]="undoing()"
                       [attr.aria-label]="'Desfazer ' + (item.status === 'COMPLETED' ? 'conclusão' : 'pulo') + ' de ' + item.title + ' em ' + dateLabel(item.actionDate)"

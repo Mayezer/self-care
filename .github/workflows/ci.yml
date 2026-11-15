@@ -44,6 +44,7 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm test
       - run: npm run build
 
@@ -52,10 +53,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     container:
-      image: eclipse-temurin:25.0.4.1_1-jdk-noble@sha256:a9c5ddd386f629518bd500ecfabf7d1e5d32d7ffed735d5c3b1604ae92c830f4
+      image: eclipse-temurin:25.0.5_8-jdk-noble@sha256:80f67fb3d6f76e2d817d98a4cc2a9cf05f054d4e6adc5e2144bde671d722e63f
     services:
       postgres:
-        image: postgres:18.6@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+        image: postgres:18.7@sha256:9f4fd4aa918f52ae3d6f3b687f1de90d8f867cd4d520021545a9a50c120eae3b
         env:
           POSTGRES_DB: autocuidado_ci
           POSTGRES_HOST_AUTH_METHOD: trust

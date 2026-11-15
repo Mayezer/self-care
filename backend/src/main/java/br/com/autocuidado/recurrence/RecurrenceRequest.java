@@ -53,7 +53,7 @@ public record RecurrenceRequest(LocalDate startDate, int weeks, Set<DayOfWeek> w
         return null;
     }
 
-    private static Set<DayOfWeek> parseWeekdays(JsonNode value, Map<String, String> errors) {
+    public static Set<DayOfWeek> parseWeekdays(JsonNode value, Map<String, String> errors) {
         var weekdays = EnumSet.noneOf(DayOfWeek.class);
         if (!value.isArray()) {
             errors.put("weekdays", "Informe os dias da semana em uma lista.");

@@ -3,11 +3,19 @@ interface Source {
   url: string;
 }
 
+interface Tutorial {
+  title: string;
+  objective: string;
+  video: Source;
+}
+
 export interface Guide {
   id: string;
   title: string;
   summary: string;
   paragraphs?: readonly string[];
+  tutorials?: readonly Tutorial[];
+  stepsTitle?: string;
   steps?: readonly string[];
   sources: readonly Source[];
 }
@@ -104,7 +112,7 @@ export const GUIDES = {
     title: 'Etapas do cronograma',
     summary: 'Veja como escolher os dias e o que significam as etapas opcionais.',
     paragraphs: [
-      'Na prévia, escolha de 1 a 7 dias diferentes da semana. O total aparece na tela conforme você seleciona os dias. Cada sessão começa em Somente lavagem. Se quiser, altere a etapa daquela sessão.',
+      'Na prévia, escolha de 1 a 7 dias diferentes da semana. O total aparece na tela conforme você seleciona os dias. Na montagem manual, cada sessão começa em Somente lavagem. Na sugestão, você pode escolher uma etapa para a primeira sessão. Ajuste as etapas na prévia como preferir.',
       'Hidratação é um nome usado em produtos voltados à maciez. Nutrição costuma aparecer em fórmulas com óleos ou outros ingredientes emolientes. Reconstrução é um nome comercial usado em produtos para fios que passaram por desgaste. A composição e o modo de uso variam conforme a fórmula.',
       'Antes de usar um produto, confira a região de aplicação, o tempo de pausa e a orientação sobre enxágue no rótulo. Escolha os dias e as etapas que cabem na sua rotina.',
     ],
@@ -134,8 +142,31 @@ export const GUIDES = {
   },
   makeup: {
     id: 'maquiagem',
-    title: 'Planejar ou registrar maquiagem',
-    summary: 'Organize uma sessão ou guarde um cuidado já realizado.',
+    title: 'Maquiagem',
+    summary: 'Aprenda técnicas para iniciantes e veja como registrar a maquiagem na agenda.',
+    tutorials: [{
+      title: 'Prepare a pele e aplique a base',
+      objective: 'Pratique espalhar uma camada fina de base e acrescentar um pouco mais onde quiser maior cobertura.',
+      video: {
+        title: 'Preparação de pele para maquiagem · Alice Salazar no YouTube',
+        url: 'https://www.youtube.com/watch?v=oKPSXBqD5ZY',
+      },
+    }, {
+      title: 'Esfume a sombra',
+      objective: 'Comece com uma cor na pálpebra e suavize a borda com um pincel limpo. Use um produto indicado para a área dos olhos.',
+      video: {
+        title: 'Aprenda a esfumar · Camila Nunes no YouTube',
+        url: 'https://www.youtube.com/watch?v=X0s4adK3nNc',
+      },
+    }, {
+      title: 'Finalize com blush',
+      objective: 'Aplique um pouco de blush cremoso nas maçãs do rosto e espalhe com batidinhas até chegar à intensidade que você quer.',
+      video: {
+        title: 'Como aplicar blush cremoso · Débora Bitencourt no canal Lilian Pacce no YouTube',
+        url: 'https://www.youtube.com/watch?v=IpoOZ6jerds',
+      },
+    }],
+    stepsTitle: 'Planejar ou registrar maquiagem',
     steps: [
       'Lave as mãos antes de aplicar e use apenas produtos indicados para a área dos olhos. Reserve a maquiagem e os aplicadores para uso pessoal.',
       'Para limpar pincéis reutilizáveis, lave as cerdas com água morna e xampu suave sem mergulhar o cabo. Enxágue e deixe os pincéis secarem deitados antes de guardar.',

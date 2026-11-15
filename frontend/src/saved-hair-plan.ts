@@ -1,3 +1,4 @@
+import { PageHeading } from './page-heading';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -15,7 +16,7 @@ interface SavedPlan {
 
 @Component({
   selector: 'app-saved-hair-plan',
-  imports: [RouterLink],
+  imports: [PageHeading, RouterLink],
   styles: `
     .session {
       display: flex;
@@ -24,11 +25,11 @@ interface SavedPlan {
     }
   `,
   template: `
-    <div class="page-width page-content">
-      <div class="intro">
+    <div class="page-width page-content reading-page">
+      <header appPageHeading="bookmark_add">
         <p class="eyebrow">Cuidado com o cabelo</p>
         <h1 #heading tabindex="-1">Cronograma salvo</h1>
-      </div>
+      </header>
       @if (plan(); as saved) {
         <section class="card" aria-labelledby="manage-plan-title">
           <h2 id="manage-plan-title">Gerenciar cronograma</h2>

@@ -61,6 +61,7 @@ class BillingPostgresqlTest {
     private static final String SUBSCRIPTIONS = "/subscriptions?customer=cus_owner&status=all&limit=100";
     private static final String SESSIONS = "/checkout/sessions?customer=cus_owner&limit=1";
     private static final String STATE = "/api/subscription";
+    private static final String FORUM = "/api/forum/participation";
     private static final String PASSWORD = "FicticiaE21642!";
     private static final JsonMapper JSON = new JsonMapper();
 
@@ -88,6 +89,7 @@ class BillingPostgresqlTest {
 
             try (var application = new SpringApplicationBuilder(SelfCareApplication.class, ProviderFixture.class)
                     .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + schemaUrl,
+                            "--app.forum.enabled=true", "--app.forum.public-reading-enabled=true",
                             "--app.billing.enabled=true", "--app.billing.stripe.secret-key=sk_test_fixture",
                             "--app.billing.stripe.price-id=" + PRICE, "--app.billing.stripe.webhook-secret=" + SECRET,
                             "--app.billing.return-url=" + RETURN)) {
@@ -105,6 +107,7 @@ class BillingPostgresqlTest {
                 owner.login("billing_owner");
                 other.login("billing_other");
                 assertFalse(owner.state().path("active").asBoolean());
+                assertEquals("INACTIVE", json(owner.get(FORUM), 200).path("state").asString());
                 assertEquals(990, owner.state().path("monthlyPriceCents").asInt());
                 assertEquals(403, owner.postWithoutCsrf(STATE + "/checkout").statusCode());
 
@@ -158,6 +161,7 @@ class BillingPostgresqlTest {
                     assertEquals(204, duplicate.get(15, TimeUnit.SECONDS));
                 }
                 assertTrue(owner.state().path("active").asBoolean());
+                assertEquals("ACTIVE", json(owner.get(FORUM), 200).path("state").asString());
                 assertFalse(other.state().path("active").asBoolean());
                 assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM stripe_webhook_events", Integer.class));
                 fixture.verify();
@@ -179,6 +183,7 @@ class BillingPostgresqlTest {
                 assertEquals(409, owner.post(STATE + "/checkout").statusCode());
                 assertEquals(PORTAL, json(owner.post(STATE + "/portal"), 200).path("url").asString());
                 assertTrue(json(owner.post(STATE + "/refresh"), 200).path("cancelAtPeriodEnd").asBoolean());
+                assertEquals("ACTIVE", json(owner.get(FORUM), 200).path("state").asString());
                 assertEquals(204, anonymous.webhook(event("evt_changed", "customer.subscription.updated", CUSTOMER, "active")).statusCode());
                 assertFalse(owner.state().path("active").asBoolean());
                 assertTrue(owner.state().path("canManage").asBoolean());
@@ -187,12 +192,14 @@ class BillingPostgresqlTest {
                 assertEquals(204, anonymous.webhook(event("evt_older", "customer.subscription.updated", CUSTOMER, "active")).statusCode());
                 assertFalse(owner.state().path("active").asBoolean());
                 assertFalse(owner.state().path("canManage").asBoolean());
+                assertEquals("INACTIVE", json(owner.get(FORUM), 200).path("state").asString());
                 jdbc.update("""
                         INSERT INTO hair_diary_photos (account_id, id, captured_on, created_at, content)
                         SELECT account_id, ?, DATE '2026-10-01', CURRENT_TIMESTAMP, decode('00', 'hex')
                         FROM billing_accounts WHERE stripe_customer_id = 'cus_owner'
                         """, UUID.randomUUID());
                 assertTrue(json(owner.post(STATE + "/refresh"), 200).path("active").asBoolean());
+                assertEquals("ACTIVE", json(owner.get(FORUM), 200).path("state").asString());
                 assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM hair_diary_photos", Integer.class));
                 var maintenance = application.getBean(BillingDiaryMaintenance.class);
                 for (boolean active : new boolean[] {true, false}) {

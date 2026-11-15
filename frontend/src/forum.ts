@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, output, signal, viewChild } from '@angular/core';
+import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, input, output, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
 import { CATEGORY_LABELS } from './care-labels';
 import { postWithCsrf, putWithCsrf } from './csrf';
 
@@ -11,8 +12,9 @@ const WINDOW = new Intl.DateTimeFormat('pt-BR', {
 });
 
 interface Content {
-  kind: 'STORY' | 'REVIEW';
+  kind: 'STORY' | 'REVIEW' | 'QUESTION';
   category: keyof typeof CATEGORY_LABELS | null;
+  title: string | null;
   body: string;
   product: string | null;
   rating: number | null;
@@ -27,12 +29,22 @@ interface Post {
 interface Page {
   posts: Post[];
   nextAvailableAt: string | null;
+  comments: OwnComment[];
 }
 
-const EMPTY: Content = { kind: 'STORY', category: null, body: '', product: null, rating: null };
+interface OwnComment {
+  id: string;
+  body: string;
+  status: keyof typeof STATES;
+  topicKind: Content['kind'];
+  publicTopicId: string | null;
+}
+
+const EMPTY: Content = { kind: 'STORY', category: null, title: null, body: '', product: null, rating: null };
 
 @Component({
   selector: 'app-forum',
+  imports: [RouterLink],
   templateUrl: './forum.html',
   styleUrl: './forum.css',
 })
@@ -42,14 +54,20 @@ export class Forum {
   private readonly injector = inject(Injector);
   private readonly editorHeading = viewChild<ElementRef<HTMLElement>>('editorHeading');
   private readonly postsHeading = viewChild<ElementRef<HTMLElement>>('postsHeading');
+  private readonly commentsHeading = viewChild<ElementRef<HTMLElement>>('commentsHeading');
   private readonly draftButton = viewChild<ElementRef<HTMLButtonElement>>('draftButton');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
   private editingId: string | null = null;
 
   readonly sessionExpired = output();
+  readonly accessLost = output();
+  readonly withdrawn = output();
+  readonly canParticipate = input.required<boolean>();
   protected readonly labels = CATEGORY_LABELS;
   protected readonly categories = Object.keys(CATEGORY_LABELS) as (keyof typeof CATEGORY_LABELS)[];
   protected readonly states = STATES;
+  protected readonly kindLabels = { STORY: 'Relato', REVIEW: 'Avaliação de produto', QUESTION: 'Pergunta' };
+  protected readonly bodyLabels = { STORY: 'Seu relato', REVIEW: 'Experiência de uso', QUESTION: 'Sua pergunta' };
   protected readonly ratings = [1, 2, 3, 4, 5];
   protected readonly page = signal<Page | null>(null);
   protected readonly content = signal(EMPTY);
@@ -95,10 +113,15 @@ export class Forum {
   }
 
   protected save(submit: boolean): void {
-    if (this.busy()) return;
+    if (this.busy() || !this.canParticipate()) return;
     const id = this.editingId ??= crypto.randomUUID();
     const current = this.content();
-    const body = current.kind === 'REVIEW' ? current : { ...current, product: null, rating: null };
+    const body = {
+      ...current,
+      title: current.kind === 'QUESTION' ? current.title : null,
+      product: current.kind === 'REVIEW' ? current.product : null,
+      rating: current.kind === 'REVIEW' ? current.rating : null,
+    };
     this.begin();
     const request = submit ? postWithCsrf<Post>(this.http, `${POSTS}/${id}/submit`, body)
       : putWithCsrf<Post>(this.http, `${POSTS}/${id}`, body);
@@ -118,13 +141,25 @@ export class Forum {
   }
 
   protected withdraw(post: Post): void {
+    this.withdrawAt(`${POSTS}/${post.id}/withdraw`,
+      'Publicação retirada. O envio continua contando na cota do dia.');
+  }
+
+  protected withdrawComment(comment: OwnComment): void {
+    this.withdrawAt(`/api/forum/comments/${comment.id}/withdraw`,
+      comment.topicKind === 'QUESTION' ? 'Resposta retirada.' : 'Comentário retirado.',
+      () => this.commentsHeading()?.nativeElement.focus());
+  }
+
+  private withdrawAt(url: string, message: string, focus = () => this.postsHeading()?.nativeElement.focus()): void {
     if (this.busy()) return;
     this.begin();
-    postWithCsrf<void>(this.http, `${POSTS}/${post.id}/withdraw`, null)
+    postWithCsrf<void>(this.http, url, null)
       .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
         next: () => {
-          this.notice.set('Publicação retirada. O envio continua contando na cota da semana.');
-          this.load(() => this.postsHeading()?.nativeElement.focus());
+          this.notice.set(message);
+          this.withdrawn.emit();
+          this.load(focus);
         },
         error: (error: HttpErrorResponse) => this.failure(error),
       });
@@ -147,9 +182,12 @@ export class Forum {
       return;
     }
     const next = error.status === 429 ? error.error?.nextAvailableAt : null;
-    if (typeof next === 'string') {
+    if (error.status === 403 && error.error?.code === 'SUBSCRIPTION_REQUIRED') {
+      this.accessLost.emit();
+      this.errors.set(['Sua assinatura não está ativa. O texto foi mantido nesta tela.']);
+    } else if (typeof next === 'string') {
       this.page.update(page => page && { ...page, nextAvailableAt: next });
-      this.errors.set([`Você já enviou uma publicação nesta semana. Próximo envio em ${this.formatWindow(next)}, no horário de Brasília.`]);
+      this.errors.set([`Você já enviou uma publicação hoje. Próximo envio em ${this.formatWindow(next)}, no horário de Brasília.`]);
     } else {
       const fields: Record<string, string> | undefined = error.error?.errors;
       this.errors.set(fields ? Object.values(fields) : ['Não foi possível continuar. Tente novamente.']);

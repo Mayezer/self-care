@@ -10,7 +10,8 @@
 @if (loading()) {
   <p class="info-strip" role="status">Carregando a semana…</p>
 }
-<p #actionStatus class="agenda-feedback" role="status" tabindex="-1">{{ actionNotice() }}</p>
+<p #actionStatus class="agenda-feedback agenda-action-status" [class.visually-hidden]="!actionNotice()"
+   role="status" tabindex="-1">{{ actionNotice() }}</p>
 @if (actionError(); as message) {
   <p class="agenda-feedback field-error" role="alert">{{ message }}</p>
 }
@@ -107,6 +108,9 @@
             </div>
             <span class="category-icon material-symbol" [attr.data-category]="item.category" aria-hidden="true">{{ categoryIcons[item.category] }}</span>
           </div>
+          @if (item.skinSteps?.length) {
+            <app-skin-routine-steps [steps]="item.skinSteps" [title]="item.title" />
+          }
           <ng-container [ngTemplateOutlet]="actions" [ngTemplateOutletContext]="{ $implicit: item }" />
         } @else {
           <h2 id="next-care-title"><span class="material-symbol" aria-hidden="true">spa</span> Próximo cuidado</h2>
@@ -130,6 +134,9 @@
                   </div>
                   <span class="pill status-overdue"><span class="material-symbol" aria-hidden="true">info</span>Atrasada</span>
                 </div>
+                @if (item.skinSteps?.length) {
+                  <app-skin-routine-steps [steps]="item.skinSteps" [title]="item.title" />
+                }
                 <ng-container [ngTemplateOutlet]="actions" [ngTemplateOutletContext]="{ $implicit: item }" />
               </li>
             }
@@ -178,6 +185,9 @@
                   </div>
                 }
                 @if (item.id !== current.nextCare?.id) {
+                  @if (item.skinSteps?.length) {
+                    <app-skin-routine-steps [steps]="item.skinSteps" [title]="item.title" />
+                  }
                   <ng-container [ngTemplateOutlet]="actions" [ngTemplateOutletContext]="{ $implicit: item }" />
                 }
               </li>
@@ -232,13 +242,16 @@
   }
 </ng-template>
 <ng-template #actions let-item>
+  @let future = item.status === 'PLANNED' && item.date > (week()?.today ?? item.date);
   <div class="agenda-actions">
     @if (item.status === 'PLANNED') {
-      <button #completeButton class="choice-button complete-action" type="button" [attr.aria-disabled]="actionsUnavailable()"
+      <button #completeButton class="choice-button complete-action" type="button" [disabled]="future"
+              [attr.aria-disabled]="future || actionsUnavailable()"
               [attr.aria-label]="'Concluir ' + item.title"
+              [attr.aria-describedby]="future ? 'completion-hint-' + item.id : null"
               [attr.aria-expanded]="dateEditor()?.id === item.id && dateEditor()?.action === 'complete'"
               (click)="openDateEditor(item.id, 'complete')"><span class="material-symbol" aria-hidden="true">check</span> Concluir</button>
-      @if (dateEditor()?.id === item.id && dateEditor()?.action === 'complete') {
+      @if (!future && dateEditor()?.id === item.id && dateEditor()?.action === 'complete') {
         <ng-container [ngTemplateOutlet]="dateForm"
                       [ngTemplateOutletContext]="{ item, action: 'complete', button: completeButton }" />
       }
@@ -254,13 +267,16 @@
       }
       <button class="choice-button skip-action" type="button" [attr.aria-disabled]="actionsUnavailable()"
               [attr.aria-label]="'Pular ' + item.title"
-              (click)="changeOccurrence(item.id, 'skip')"><span class="material-symbol" aria-hidden="true">redo</span> Pular</button>
+              (click)="changeOccurrence(item, 'skip')"><span class="material-symbol" aria-hidden="true">redo</span> Pular</button>
     } @else {
       <button class="secondary" type="button" [attr.aria-disabled]="actionsUnavailable()"
               [attr.aria-label]="'Desfazer ação em ' + item.title"
-              (click)="changeOccurrence(item.id, 'undo')">Desfazer</button>
+              (click)="changeOccurrence(item, 'undo')">Desfazer</button>
     }
   </div>
+  @if (future) {
+    <p class="hint" [id]="'completion-hint-' + item.id">A conclusão fica disponível a partir da data planejada.</p>
+  }
   <ng-container [ngTemplateOutlet]="planLink" [ngTemplateOutletContext]="{ $implicit: item }" />
   @if (item.category === 'SKIN' && item.planId && item.canReschedule) {
     <div>
@@ -285,13 +301,16 @@
   @if (item.category === 'HAIR' && item.planId) {
     <div><a class="agenda-add" [routerLink]="['/cronogramas', item.planId]">Ver cronograma</a></div>
   }
+  @if (item.cleaningSeries) {
+    <div><a class="agenda-add" routerLink="/penteadeira" fragment="limpeza">Gerenciar lembretes de limpeza</a></div>
+  }
 </ng-template>
 
 <ng-template #dateForm let-item="item" let-action="action" let-button="button">
   @let completing = action === 'complete';
   @let today = week()?.today ?? '';
   <form class="agenda-date-form" novalidate [attr.aria-label]="(completing ? 'Concluir ' : 'Reagendar ') + item.title"
-        (submit)="$event.preventDefault(); changeOccurrence(item.id, action, actionDate.value)">
+        (submit)="$event.preventDefault(); changeOccurrence(item, action, actionDate.value)">
     <div class="field">
       <label [for]="'action-date-' + item.id">{{ completing ? 'Data de realização' : 'Nova data planejada' }}</label>
       <input #actionDate [id]="'action-date-' + item.id" [name]="completing ? 'completedOn' : 'plannedDate'"

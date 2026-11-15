@@ -44,7 +44,7 @@ class MfaLoginController {
     void begin(AccountPrincipal account, HttpServletRequest request, HttpServletResponse response) throws IOException {
         sessions.prepare(request, response);
         var row = store.account(account.accountId()).filter(value -> value.version() == account.credentialVersion()).orElse(null);
-        if (row == null) {
+        if (row == null || row.email() == null) {
             response.setStatus(401);
             return;
         }
@@ -54,22 +54,19 @@ class MfaLoginController {
         response.setContentType("application/json");
         String step = row.enrolled() ? "verify" : "enroll-email";
         response.getWriter().write("""
-                {"mfa":"%s","needsEmail":%s}
-                """.formatted(step, row.email() == null));
+                {"mfa":"%s","needsEmail":false}
+                """.formatted(step));
     }
 
     @PostMapping("/email")
-    ResponseEntity<Void> email(@RequestBody Address input, HttpServletRequest request) {
+    ResponseEntity<Void> email(HttpServletRequest request) {
         var pending = pending(request);
         synchronized (pending) {
             requireCurrent(request, pending);
             if (pending.enrolled) {
                 throw unauthorized();
             }
-            String email = pending.account.email() != null ? pending.account.email() : AccountController.readEmail(input.email());
-            if (email == null) {
-                return ResponseEntity.badRequest().build();
-            }
+            String email = pending.account.email();
             checkLimit("mfa-email:" + pending.account.accountId());
             String code = AuthSecrets.token();
             try {
@@ -132,7 +129,7 @@ class MfaLoginController {
                 return ResponseEntity.status(HttpStatus.CONFLICT).build();
             }
             sessions.invalidateAccount(pending.account.accountId());
-            finish(pending.account.afterEnrollment(pending.email, pending.account.credentialVersion() + 1), request, response);
+            finish(pending.account.afterMfa(pending.email, pending.account.credentialVersion() + 1), request, response);
             return ResponseEntity.noContent().build();
         }
     }
@@ -146,7 +143,7 @@ class MfaLoginController {
             if (!pending.enrolled || !operations.verify(pending.account, input.code())) {
                 throw invalidCode();
             }
-            finish(pending.account, request, response);
+            finish(pending.account.afterMfa(pending.account.email(), pending.account.credentialVersion()), request, response);
             return ResponseEntity.noContent().build();
         }
     }
@@ -188,7 +185,6 @@ class MfaLoginController {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST);
     }
 
-    record Address(String email) {}
     record Code(String code) {}
 
     private static final class Pending {

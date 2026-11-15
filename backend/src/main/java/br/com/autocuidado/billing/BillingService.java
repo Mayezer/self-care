@@ -8,7 +8,6 @@ import br.com.autocuidado.hair.DiaryRetention;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -21,24 +20,23 @@ public class BillingService {
     private final StripeClient stripe;
     private final Clock clock;
     private final DiaryRetention diaryRetention;
+    private final SubscriptionAccess access;
 
-    BillingService(BillingStore store, StripeClient stripe, Clock clock, DiaryRetention diaryRetention) {
+    BillingService(BillingStore store, StripeClient stripe, Clock clock, DiaryRetention diaryRetention,
+                   SubscriptionAccess access) {
         this.store = store;
         this.stripe = stripe;
         this.clock = clock;
         this.diaryRetention = diaryRetention;
+        this.access = access;
     }
 
     State state(long accountId) {
         return state(store.account(accountId).map(BillingStore.Row::subscription).orElse(FREE));
     }
 
-    @Transactional(propagation = Propagation.MANDATORY)
     public void requireActive(long accountId) {
-        Instant until = store.lockAccount(accountId).map(row -> row.subscription().accessUntil()).orElse(null);
-        if (!active(until, clock.instant())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "O diário exige uma assinatura ativa.");
-        }
+        access.requireActive(accountId, "O diário exige uma assinatura ativa.");
     }
 
     @Transactional
@@ -76,20 +74,18 @@ public class BillingService {
     private StripeClient.Subscription synchronize(BillingStore.Row row) {
         var subscription = stripe.subscription(row.customer());
         Instant now = clock.instant();
-        if (active(subscription.accessUntil(), now)) diaryRetention.purgeBeforeRenewal(row.accountId(), now);
+        if (SubscriptionAccess.active(subscription.accessUntil(), now)) {
+            diaryRetention.purgeBeforeRenewal(row.accountId(), now);
+        }
         store.save(row.accountId(), subscription, now);
         return subscription;
     }
 
     private State state(StripeClient.Subscription subscription) {
         var until = subscription.accessUntil();
-        boolean active = active(until, clock.instant());
+        boolean active = SubscriptionAccess.active(until, clock.instant());
         return new State(active, subscription.exists(), active ? until : null, active && subscription.ends(),
                 StripeClient.MONTHLY_PRICE_CENTS, !stripe.liveMode());
-    }
-
-    private static boolean active(Instant until, Instant now) {
-        return until != null && until.isAfter(now);
     }
 
     record State(boolean active, boolean canManage, Instant accessUntil, boolean cancelAtPeriodEnd,

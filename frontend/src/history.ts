@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CATEGORY_ICONS, CATEGORY_LABELS, STATUS_ICONS, STATUS_LABELS, careDetails } from './care-labels';
 import type { CareDetails } from './care-labels';
 import { CategoryFilter } from './category-filter';
+import { SkinRoutineSteps } from './skin-routine-steps';
 import { postWithCsrf } from './csrf';
 import { formatHairDate } from './hair-preview-draft';
 
@@ -20,7 +21,7 @@ const shortDate = new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'sho
 
 @Component({
   selector: 'app-history',
-  imports: [CategoryFilter],
+  imports: [CategoryFilter, SkinRoutineSteps],
   templateUrl: './history.html',
 })
 export class History {

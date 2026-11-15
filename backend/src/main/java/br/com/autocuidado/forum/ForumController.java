@@ -6,6 +6,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import br.com.autocuidado.auth.AccountPrincipal;
+import br.com.autocuidado.billing.SubscriptionAccess;
 import br.com.autocuidado.persistence.CareCategory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.CacheControl;
@@ -21,52 +22,97 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.JsonNode;
 
 @RestController
-@RequestMapping("/api/forum/posts")
-@ConditionalOnProperty(name = "app.forum.enabled", havingValue = "true")
+@RequestMapping("/api/forum")
+@ConditionalOnProperty(name = {"app.forum.enabled", "app.forum.public-reading-enabled"}, havingValue = "true")
 class ForumController {
-    private static final Set<String> FIELDS = Set.of("kind", "category", "body", "product", "rating");
+    private static final Set<String> FIELDS = Set.of("kind", "category", "title", "body", "product", "rating");
     private final ForumPosts posts;
+    private final SubscriptionAccess access;
 
-    ForumController(ForumPosts posts) {
+    ForumController(ForumPosts posts, SubscriptionAccess access) {
         this.posts = posts;
+        this.access = access;
     }
 
-    @GetMapping
+    @GetMapping("/participation")
+    ResponseEntity<Map<String, Object>> participation(@AuthenticationPrincipal AccountPrincipal account) {
+        String state = account == null ? "VISITOR" : access.active(account.accountId()) ? "ACTIVE" : "INACTIVE";
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(Map.of("state", state, "canModerate", account != null && account.canModerateForum()));
+    }
+
+    @GetMapping("/posts")
     ResponseEntity<ForumPosts.Page> list(@AuthenticationPrincipal AccountPrincipal account) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(posts.list(account.accountId()));
     }
 
-    @PutMapping("/{id}")
+    @PutMapping("/posts/{id}")
     ResponseEntity<?> draft(@AuthenticationPrincipal AccountPrincipal account, @PathVariable UUID id,
                             @RequestBody JsonNode request) {
         return save(account, id, request, false);
     }
 
-    @PostMapping("/{id}/submit")
+    @PostMapping("/posts/{id}/submit")
     ResponseEntity<?> submit(@AuthenticationPrincipal AccountPrincipal account, @PathVariable UUID id,
                              @RequestBody JsonNode request) {
         return save(account, id, request, true);
     }
 
-    @PostMapping("/{id}/withdraw")
+    @PostMapping("/posts/{id}/withdraw")
     ResponseEntity<Void> withdraw(@AuthenticationPrincipal AccountPrincipal account, @PathVariable UUID id) {
         return posts.withdraw(account.accountId(), id) ? ResponseEntity.noContent().build()
                 : ResponseEntity.notFound().build();
+    }
+
+    @PostMapping("/comments/{id}/withdraw")
+    ResponseEntity<Void> withdrawComment(@AuthenticationPrincipal AccountPrincipal account, @PathVariable UUID id) {
+        return posts.withdrawComment(account.accountId(), id) ? ResponseEntity.noContent().build()
+                : ResponseEntity.notFound().build();
+    }
+
+    @PostMapping("/topics/{topicId}/comments/{requestId}")
+    ResponseEntity<?> comment(@AuthenticationPrincipal AccountPrincipal account, @PathVariable UUID topicId,
+                              @PathVariable UUID requestId, @RequestBody JsonNode request) {
+        if (!request.isObject() || !request.propertyNames().equals(Set.of("body"))) return invalidBody();
+        var errors = new LinkedHashMap<String, String>();
+        String body = text(request, "body", 2000, true, "Escreva um comentário de até 2.000 caracteres.", errors);
+        if (!errors.isEmpty()) return ResponseEntity.badRequest().body(Map.of("errors", errors));
+        var result = posts.comment(account.accountId(), topicId, requestId, body);
+        return switch (result.result()) {
+            case ACCEPTED -> ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of("id", result.id()));
+            case CONFLICT -> ResponseEntity.status(HttpStatus.CONFLICT).build();
+            case MISSING -> ResponseEntity.notFound().build();
+            case LIMITED -> ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After", "60").build();
+        };
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<?> status(ResponseStatusException error) {
+        if (error.getStatusCode() != HttpStatus.FORBIDDEN) throw error;
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
+                .body(Map.of("code", "SUBSCRIPTION_REQUIRED"));
     }
 
     private ResponseEntity<?> save(AccountPrincipal account, UUID id, JsonNode request, boolean submit) {
         if (!request.isObject() || !FIELDS.containsAll(request.propertyNames())) return invalidBody();
         var errors = new LinkedHashMap<String, String>();
         var kind = choice(ForumPosts.Kind.class, request.path("kind"));
-        if (kind == null) errors.put("kind", "Escolha relato ou avaliação.");
+        if (kind == null) errors.put("kind", "Escolha relato, avaliação ou pergunta.");
         var category = choice(CareCategory.class, request.path("category"));
         if (category == null && (submit || request.hasNonNull("category"))) {
             errors.put("category", "Escolha uma categoria.");
         }
         String body = text(request, "body", 2000, submit, "Escreva um texto de até 2.000 caracteres.", errors);
+        String title = null;
+        if (kind == ForumPosts.Kind.QUESTION) {
+            title = text(request, "title", 160, submit, "Informe um título de até 160 caracteres.", errors);
+        } else if (request.hasNonNull("title")) {
+            errors.put("title", "O título é usado nas perguntas.");
+        }
         String product = null;
         Integer rating = null;
         if (kind == ForumPosts.Kind.REVIEW) {
@@ -84,7 +130,7 @@ class ForumController {
         }
         if (!errors.isEmpty()) return ResponseEntity.badRequest().body(Map.of("errors", errors));
 
-        var content = new ForumPosts.Content(kind, category, body == null ? "" : body, product, rating);
+        var content = new ForumPosts.Content(kind, category, title, body == null ? "" : body, product, rating);
         if (!submit) {
             var saved = posts.draft(account.accountId(), id, content);
             return saved == null ? ResponseEntity.status(HttpStatus.CONFLICT)
@@ -109,7 +155,7 @@ class ForumController {
         }
     }
 
-    private static String text(JsonNode request, String field, int limit, boolean required,
+    static String text(JsonNode request, String field, int limit, boolean required,
                                String message, Map<String, String> errors) {
         var value = request.path(field);
         String text = value.isString() ? value.asString().strip() : "";

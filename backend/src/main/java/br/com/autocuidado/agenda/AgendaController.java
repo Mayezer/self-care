@@ -2,6 +2,8 @@ package br.com.autocuidado.agenda;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +12,7 @@ import java.util.regex.Pattern;
 import br.com.autocuidado.auth.AccountPrincipal;
 import br.com.autocuidado.persistence.AgendaService;
 import br.com.autocuidado.persistence.AgendaService.Action;
+import br.com.autocuidado.persistence.AgendaService.SkinRoutinePeriod;
 import br.com.autocuidado.persistence.CarePeriod;
 import br.com.autocuidado.persistence.PlanCreationConflictException;
 import br.com.autocuidado.recurrence.RecurrenceDateGenerator.InvalidRecurrenceException;
@@ -149,6 +152,67 @@ class AgendaController {
                 : ResponseEntity.notFound().build();
     }
 
+    @PostMapping("/api/skin-routines")
+    ResponseEntity<?> scheduleSkinRoutine(@AuthenticationPrincipal AccountPrincipal account, @RequestBody JsonNode request) {
+        if (!request.isObject() || request.has("accountId") || request.has("planId")) {
+            return invalidBody();
+        }
+        var errors = new LinkedHashMap<String, String>();
+        LocalDate startDate = RecurrenceRequest.parseDate(request.path("startDate"));
+        if (startDate == null) {
+            errors.put("startDate", "Informe uma data válida no formato AAAA-MM-DD.");
+        }
+        JsonNode weeks = request.path("weeks");
+        if (!weeks.isIntegralNumber() || !weeks.canConvertToInt() || weeks.asInt() < 1 || weeks.asInt() > 12) {
+            errors.put("weeks", "Escolha uma duração de 1 a 12 semanas.");
+        }
+        var requestId = RecurrenceRequest.parseRequestId(request.path("requestId"), errors);
+        var periods = new ArrayList<SkinRoutinePeriod>();
+        var parts = request.path("periods");
+        if (!parts.isArray() || parts.isEmpty() || parts.size() > 2) {
+            errors.put("periods", "Escolha Manhã, Noite ou os dois períodos.");
+        } else {
+            var included = EnumSet.noneOf(CarePeriod.class);
+            for (JsonNode part : parts) {
+                var fields = new LinkedHashMap<String, String>();
+                var period = parseSkinPeriod(part.path("period"), fields);
+                if (period == null || !included.add(period) || part.has("accountId") || part.has("planId")) {
+                    errors.put("periods", "Informe uma rotina nova para cada período escolhido.");
+                    continue;
+                }
+                String title = parseTitle(part.path("title"), "para a rotina de pele", fields);
+                if (title.length() > 100) {
+                    fields.put("title", "Use até 100 caracteres no título.");
+                }
+                var weekdays = RecurrenceRequest.parseWeekdays(part.path("weekdays"), fields);
+                if (weekdays.isEmpty()) {
+                    fields.putIfAbsent("weekdays", "Selecione pelo menos um dia da semana.");
+                }
+                var steps = new ArrayList<String>();
+                var values = part.path("steps");
+                if (values.isArray() && values.size() >= 1 && values.size() <= 8) {
+                    for (var value : values) {
+                        String step = value.isString() ? value.asString().strip() : "";
+                        if (!NON_WHITESPACE.matcher(step).find() || step.indexOf(0) >= 0 || step.length() > 120) {
+                            fields.put("steps", "Preencha cada passo com até 120 caracteres.");
+                        } else {
+                            steps.add(step);
+                        }
+                    }
+                } else {
+                    fields.put("steps", "Informe de 1 a 8 passos.");
+                }
+                fields.forEach((field, message) -> errors.put(period + "." + field, message));
+                periods.add(new SkinRoutinePeriod(period, title, weekdays, steps));
+            }
+        }
+        if (!errors.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("errors", errors));
+        }
+        var planIds = agenda.scheduleSkinRoutine(account, requestId, startDate, weeks.asInt(), periods);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("planIds", planIds));
+    }
+
     private static String parseTitle(JsonNode titleField, String context, Map<String, String> errors) {
         String title = titleField.isString() ? titleField.asString().strip() : "";
         if (!NON_WHITESPACE.matcher(title).find() || title.indexOf(0) >= 0) {
@@ -261,12 +325,19 @@ class AgendaController {
     }
 
     private ResponseEntity<?> act(AccountPrincipal account, long id, Action action, LocalDate date) {
-        return switch (agenda.act(account, id, action, date)) {
-            case APPLIED -> ResponseEntity.noContent().build();
+        var result = agenda.act(account, id, action, date);
+        return switch (result) {
+            case APPLIED -> action == Action.COMPLETE ? completionResponse("applied") : ResponseEntity.noContent().build();
+            case UNCHANGED -> action == Action.COMPLETE ? completionResponse("unchanged") : ResponseEntity.noContent().build();
             case NOT_FOUND -> ResponseEntity.notFound().build();
             case CONFLICT -> conflict("status", "Este cuidado não permite a ação selecionada.");
             case INVALID_COMPLETION_DATE -> futureCompletion();
+            case FUTURE_PLANNED_DATE -> conflict("status", "A conclusão fica disponível a partir da data planejada.");
         };
+    }
+
+    private static ResponseEntity<Void> completionResponse(String result) {
+        return ResponseEntity.noContent().header("X-Care-Completion", result).build();
     }
 
     private static ResponseEntity<?> futureCompletion() {

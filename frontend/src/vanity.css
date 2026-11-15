@@ -1,0 +1,24 @@
+.vanity, .vanity-editor fieldset, .vanity-items, .vanity-item {
+  display: grid;
+  gap: var(--space-sm);
+}
+.vanity > [role="status"]:empty { position: absolute; }
+.vanity-editor { margin: 0; max-width: 36rem; }
+.vanity-items { list-style: none; margin: 0; padding: 0; }
+.vanity-item { overflow-wrap: anywhere; }
+.vanity-item h2 { font-size: 1.1rem; }
+.vanity-status {
+  margin-top: var(--space-xs);
+  padding: 0.15rem 0.65rem;
+  background: var(--tint-light);
+  color: var(--text);
+}
+.vanity-actions, .vanity-filters { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.vanity-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: var(--touch);
+  padding-inline: var(--space-xs);
+}
+.vanity-actions button { white-space: normal; }

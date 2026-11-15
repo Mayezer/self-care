@@ -11,7 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 public interface AccountRepository extends Repository<Account, Long> {
     String LOGIN_CREDENTIAL = """
-            SELECT id, username, email, password_hash AS "passwordHash", credential_version AS "credentialVersion"
+            SELECT id, username, email, password_hash AS "passwordHash", credential_version AS "credentialVersion",
+                EXISTS (SELECT 1 FROM app_owner WHERE account_id = accounts.id) AS "owner"
             FROM accounts WHERE password_hash IS NOT NULL AND
             """;
 
@@ -33,6 +34,7 @@ public interface AccountRepository extends Repository<Account, Long> {
         String getEmail();
         String getPasswordHash();
         long getCredentialVersion();
+        boolean getOwner();
     }
 
     @Query("SELECT a.timeZone FROM Account a WHERE a.id = :id")

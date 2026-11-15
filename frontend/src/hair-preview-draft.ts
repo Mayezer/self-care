@@ -19,6 +19,12 @@ export const STAGES = [
 
 export type Weekday = (typeof WEEKDAYS)[number]['value'];
 export type Stage = (typeof STAGES)[number]['value'];
+export type HairGoal = 'ORGANIZE' | Exclude<Stage, 'WASH_ONLY'>;
+
+export interface HairSuggestionOptions {
+  goal?: HairGoal;
+  useProfile: boolean;
+}
 
 export interface PreviewOccurrence {
   date: string;
@@ -36,12 +42,19 @@ export interface HairPlanRequest extends HairPreviewDraft {
   requestId: string;
 }
 
+export interface HairPreviewState extends HairPreviewDraft {
+  requestId?: string;
+  suggestion?: HairSuggestionOptions;
+  suggestionReason?: string;
+  editedDates?: readonly string[];
+}
+
 const dateLabel = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'full', timeZone: 'UTC' });
 
 export function formatHairDate(date: string): string {
   return dateLabel.format(new Date(`${date}T00:00:00Z`));
 }
 
-export function readHairPreviewDraft(router: Router): (HairPreviewDraft | HairPlanRequest) | undefined {
+export function readHairPreviewDraft(router: Router): HairPreviewState | undefined {
   return router.currentNavigation()?.extras.state?.['hairPreviewDraft'];
 }

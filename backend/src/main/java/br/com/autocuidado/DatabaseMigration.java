@@ -23,6 +23,8 @@ final class DatabaseMigration {
             connection.setAutoCommit(false);
             statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO autocuidado_runtime");
             statement.execute("REVOKE ALL ON TABLE public.flyway_schema_history FROM autocuidado_runtime");
+            statement.execute("REVOKE ALL ON TABLE public.app_owner FROM autocuidado_runtime");
+            statement.execute("GRANT SELECT ON TABLE public.app_owner TO autocuidado_runtime");
             statement.execute("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO autocuidado_runtime");
             connection.commit();
         }

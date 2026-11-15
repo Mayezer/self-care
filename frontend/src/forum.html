@@ -1,6 +1,8 @@
 <div class="forum">
-  <p class="hint">Você pode enviar um relato ou uma avaliação por semana. Rascunhos não usam a cota.</p>
-  @if (page()?.nextAvailableAt; as next) {
+  @if (canParticipate()) {
+    <p class="hint">Com assinatura ativa, você pode enviar um relato, uma avaliação ou uma pergunta por dia. Rascunhos não usam a cota.</p>
+  }
+  @if (canParticipate() && page()?.nextAvailableAt; as next) {
     <p>Próximo envio em <strong>{{ formatWindow(next) }}</strong>, no horário de Brasília.</p>
   }
   <p role="status">{{ notice() }}</p>
@@ -12,71 +14,81 @@
     </div>
   }
   @if (page(); as current) {
-    <section class="card" aria-labelledby="forum-editor-title">
-      <h2 #editorHeading id="forum-editor-title" tabindex="-1">Escrever publicação</h2>
-      <form (submit)="$event.preventDefault(); save(true)">
-        <fieldset [disabled]="busy()">
-          <div class="field">
-            <label for="forum-kind">Tipo de publicação</label>
-            <select id="forum-kind" #kind [value]="content().kind" (change)="edit('kind', $any(kind.value))">
-              <option value="STORY">Relato</option>
-              <option value="REVIEW">Avaliação de produto</option>
-            </select>
-          </div>
-          <div class="field">
-            <label for="forum-category">Categoria</label>
-            <select id="forum-category" #category [value]="content().category ?? ''"
-                    (change)="edit('category', $any(category.value || null))">
-              <option value="">Escolha uma categoria</option>
-              @for (option of categories; track option) {
-                <option [value]="option">{{ labels[option] }}</option>
-              }
-            </select>
-          </div>
-          @if (content().kind === 'REVIEW') {
-            <p class="hint">Sua avaliação aparece como Experiência da comunidade depois de aprovada.</p>
+    @if (canParticipate()) {
+      <section class="card" aria-labelledby="forum-editor-title">
+        <h2 #editorHeading id="forum-editor-title" tabindex="-1">Escrever publicação</h2>
+        <form (submit)="$event.preventDefault(); save(true)">
+          <fieldset [disabled]="busy()">
             <div class="field">
-              <label for="forum-product">Nome do produto</label>
-              <input id="forum-product" #product maxlength="120" [value]="content().product ?? ''"
-                     (input)="edit('product', product.value || null)">
+              <label for="forum-kind">Tipo de publicação</label>
+              <select id="forum-kind" #kind [value]="content().kind" (change)="edit('kind', $any(kind.value))">
+                <option value="STORY">Relato</option>
+                <option value="REVIEW">Avaliação de produto</option>
+                <option value="QUESTION">Pergunta</option>
+              </select>
             </div>
             <div class="field">
-              <label for="forum-rating">Nota (opcional)</label>
-              <select id="forum-rating" #rating
-                      (change)="edit('rating', rating.value ? +rating.value : null)">
-                <option value="" [selected]="content().rating === null">Sem nota</option>
-                @for (option of ratings; track option) {
-                  <option [value]="option" [selected]="content().rating === option">{{ option }}</option>
+              <label for="forum-category">Categoria</label>
+              <select id="forum-category" #category [value]="content().category ?? ''"
+                      (change)="edit('category', $any(category.value || null))">
+                <option value="">Escolha uma categoria</option>
+                @for (option of categories; track option) {
+                  <option [value]="option">{{ labels[option] }}</option>
                 }
               </select>
             </div>
-          }
-          <div class="field">
-            <label for="forum-text">{{ content().kind === 'REVIEW' ? 'Experiência de uso' : 'Seu relato' }}</label>
-            <textarea id="forum-text" #body rows="5" maxlength="2000" [value]="content().body"
-                      (input)="edit('body', body.value)"></textarea>
-          </div>
-          <div class="forum-actions">
-            <button type="submit" class="primary">Enviar para análise</button>
-            <button #draftButton type="button" class="secondary" (click)="save(false)">Salvar rascunho</button>
-            <button type="button" class="secondary" (click)="reset()">Nova publicação</button>
-          </div>
-        </fieldset>
-      </form>
-    </section>
+            @if (content().kind === 'REVIEW') {
+              <p class="hint">Sua avaliação aparece como Experiência da comunidade depois de aprovada.</p>
+              <div class="field">
+                <label for="forum-product">Nome do produto</label>
+                <input id="forum-product" #product maxlength="120" [value]="content().product ?? ''"
+                       (input)="edit('product', product.value || null)">
+              </div>
+              <div class="field">
+                <label for="forum-rating">Nota (opcional)</label>
+                <select id="forum-rating" #rating
+                        (change)="edit('rating', rating.value ? +rating.value : null)">
+                  <option value="" [selected]="content().rating === null">Sem nota</option>
+                  @for (option of ratings; track option) {
+                    <option [value]="option" [selected]="content().rating === option">{{ option }}</option>
+                  }
+                </select>
+              </div>
+            }
+            @if (content().kind === 'QUESTION') {
+              <div class="field">
+                <label for="forum-title">Título da pergunta</label>
+                <input id="forum-title" #title maxlength="160" [value]="content().title ?? ''"
+                       (input)="edit('title', title.value || null)">
+              </div>
+            }
+            <div class="field">
+              <label for="forum-text">{{ bodyLabels[content().kind] }}</label>
+              <textarea id="forum-text" #body rows="5" maxlength="2000" [value]="content().body"
+                        (input)="edit('body', body.value)"></textarea>
+            </div>
+            <div class="forum-actions">
+              <button type="submit" class="primary">Enviar para análise</button>
+              <button #draftButton type="button" class="secondary" (click)="save(false)">Salvar rascunho</button>
+              <button type="button" class="secondary" (click)="reset()">Nova publicação</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+    }
 
     <section class="card" aria-labelledby="forum-posts-title">
       <h2 #postsHeading id="forum-posts-title" tabindex="-1">Minhas publicações</h2>
       @if (!current.posts.length) { <p>Você ainda não tem publicações.</p> }
       @for (post of current.posts; track post.id) {
         <article>
-          <h3>{{ post.content.product || (post.content.kind === 'REVIEW' ? 'Avaliação de produto' : 'Relato') }}</h3>
+          <h3>{{ post.content.title || post.content.product || kindLabels[post.content.kind] }}</h3>
           <p>{{ states[post.status] }} @if (post.content.category; as category) { · {{ labels[category] }} }</p>
           @if (post.content.kind === 'REVIEW') {
             <p class="hint">Experiência da comunidade @if (post.content.rating; as rating) { · Nota {{ rating }} de 5 }</p>
           }
           @if (post.content.body) { <p class="forum-text">{{ post.content.body }}</p> }
-          @if (post.status === 'DRAFT') {
+          @if (post.status === 'DRAFT' && canParticipate()) {
             <button class="secondary" type="button" [disabled]="busy()" (click)="editDraft(post)">Editar rascunho</button>
           } @else if (post.status === 'IN_REVIEW' || post.status === 'PUBLISHED') {
             <button class="secondary" type="button" [disabled]="busy()" (click)="withdraw(post)">Retirar publicação</button>
@@ -84,6 +96,26 @@
         </article>
       }
     </section>
+    @if (current.comments.length) {
+      <section class="card" aria-labelledby="forum-own-comments-title">
+        <h2 #commentsHeading id="forum-own-comments-title" tabindex="-1">Minhas respostas e comentários</h2>
+        @for (comment of current.comments; track comment.id) {
+          <article>
+            <h3>{{ comment.topicKind === 'QUESTION' ? 'Resposta' : 'Comentário' }}</h3>
+            <p>{{ states[comment.status] }}</p>
+            <p class="forum-text">{{ comment.body }}</p>
+            @if (comment.publicTopicId) {
+              <a class="agenda-add" [routerLink]="['/forum', comment.publicTopicId]">Ver tópico</a>
+            }
+            @if (comment.status === 'IN_REVIEW' || comment.status === 'PUBLISHED') {
+              <button class="secondary" type="button" [disabled]="busy()" (click)="withdrawComment(comment)">
+                {{ comment.topicKind === 'QUESTION' ? 'Retirar resposta' : 'Retirar comentário' }}
+              </button>
+            }
+          </article>
+        }
+      </section>
+    }
   } @else if (busy()) {
     <p role="status">Carregando publicações…</p>
   } @else {

@@ -1,0 +1,12 @@
+:host { display: block; margin-top: var(--space-lg); }
+.cleaning, .cleaning-series, .cleaning-card, .cleaning-fields {
+  display: grid;
+  gap: var(--space-sm);
+}
+.cleaning-series { grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); }
+.cleaning-card { min-width: 0; align-content: start; }
+.cleaning-actions { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
+.cleaning-actions button { white-space: normal; }
+.cleaning-fields legend { margin-bottom: var(--space-xs); }
+#limpeza { scroll-margin-block-start: 6rem; }
+#cleaning-notice:empty { position: absolute; }

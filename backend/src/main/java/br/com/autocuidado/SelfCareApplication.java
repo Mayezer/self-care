@@ -3,6 +3,7 @@ package br.com.autocuidado;
 import java.sql.SQLException;
 import java.time.Clock;
 
+import br.com.autocuidado.auth.OwnerProvisioning;
 import br.com.autocuidado.recurrence.RecurrenceDateGenerator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -14,6 +15,10 @@ public class SelfCareApplication {
     public static void main(String[] args) throws SQLException {
         if (args.length == 1 && args[0].equals("--migrate")) {
             DatabaseMigration.run();
+            return;
+        }
+        if (args.length == 1 && (args[0].equals("--provision-owner") || args[0].equals("--provision-existing-owner"))) {
+            OwnerProvisioning.run(args[0].equals("--provision-existing-owner"));
             return;
         }
         SpringApplication.run(SelfCareApplication.class, args);

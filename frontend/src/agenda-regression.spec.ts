@@ -104,6 +104,64 @@ it('shows a welcoming empty streak and updates it after loading another week', (
   expect(page.querySelector('.week-summary')?.textContent).toContain('0 cuidados concluídos');
 });
 
+it('keeps future care planned and makes completion available after rescheduling to the account day', () => {
+  const fixture = TestBed.createComponent(AgendaWeek);
+  const page: HTMLElement = fixture.nativeElement;
+  const friday = '2026-11-13';
+  const sunday = '2026-11-15';
+  const first = { ...cares[0], date: sunday, status: 'PLANNED', canReschedule: true };
+  const second = { ...cares[1], date: sunday, status: 'PLANNED', canReschedule: true };
+  const overdue = { ...cares[2], date: '2026-11-12', status: 'PLANNED', canReschedule: true };
+  const week = {
+    today: friday,
+    days: ['09', '10', '11', '12', '13', '14', '15'].map(day => `2026-11-${day}`),
+    items: [first, second],
+    overdue: [overdue],
+    nextCare: first,
+    completedCount: 0,
+  };
+  http.expectOne('/api/agenda/week').flush(week);
+  http.expectOne('/api/agenda/daily-message').flush(null, { status: 204, statusText: 'No Content' });
+  fixture.detectChanges();
+  page.querySelector<HTMLButtonElement>(`[aria-describedby="calendar-date-${sunday}"]`)!.click();
+  fixture.detectChanges();
+
+  expect(page.querySelector('.agenda-day [data-status="PLANNED"]')?.textContent).toContain('Planejada');
+  for (const area of ['.next-care', '.agenda-day']) {
+    const complete = page.querySelector<HTMLButtonElement>(`${area} .complete-action`)!;
+    expect(complete.disabled).toBe(true);
+    expect(page.querySelector(`#${complete.getAttribute('aria-describedby')}`)?.textContent)
+      .toContain('a partir da data planejada');
+    complete.click();
+  }
+  fixture.detectChanges();
+  expect(page.querySelector('input[name="completedOn"]')).toBeNull();
+  http.expectNone('/api/auth/csrf');
+  expect(page.querySelector<HTMLButtonElement>('.overdue-panel .complete-action')?.disabled).toBe(false);
+
+  page.querySelector<HTMLButtonElement>('.next-care .reschedule-action')!.click();
+  fixture.detectChanges();
+  const newDate = page.querySelector<HTMLInputElement>('input[name="plannedDate"]')!;
+  expect(newDate.min).toBe(friday);
+  newDate.value = friday;
+  newDate.form!.dispatchEvent(new Event('submit', { cancelable: true }));
+  http.expectOne('/api/auth/csrf').flush({ headerName: 'X-CSRF-TOKEN', token: 'test-token' });
+  const move = http.expectOne(`/api/occurrences/${first.id}/reschedule`);
+  expect(move.request.body).toEqual({ plannedDate: friday });
+  move.flush(null, { status: 204, statusText: 'No Content' });
+  const moved = { ...first, date: friday };
+  http.expectOne(`/api/agenda/week?date=${friday}`).flush({ ...week, items: [moved, second], nextCare: moved });
+  fixture.detectChanges();
+
+  const complete = page.querySelector<HTMLButtonElement>('.next-care .complete-action')!;
+  expect(complete.disabled).toBe(false);
+  complete.click();
+  fixture.detectChanges();
+  const completedOn = page.querySelector<HTMLInputElement>('input[name="completedOn"]')!;
+  expect(completedOn.value).toBe(friday);
+  expect(completedOn.max).toBe(friday);
+});
+
 it('shows the daily message independently of week navigation and category filters', () => {
   const fixture = TestBed.createComponent(AgendaWeek);
   const page: HTMLElement = fixture.nativeElement;

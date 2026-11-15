@@ -1,0 +1,168 @@
+<div class="page-width page-content public-forum">
+  <header appPageHeading="forum">
+    <p class="eyebrow">Comunidade</p>
+    <h1 tabindex="-1">{{ topicId() ? 'Tópico do fórum' : 'Fórum' }}</h1>
+    @if (!topicId()) {
+      <p>Leia relatos, avaliações e perguntas da comunidade. A leitura é aberta a todos.</p>
+    }
+  </header>
+
+  @if (topicId()) {
+    <a class="agenda-add" routerLink="/forum" queryParamsHandling="preserve">Voltar ao fórum</a>
+  } @else {
+    @if (canModerate()) {
+      <a class="agenda-add" routerLink="/forum/moderacao">Moderar fórum</a>
+    }
+    <form class="card forum-search" aria-label="Buscar no fórum"
+          (submit)="$event.preventDefault(); search(searchInput.value, kind.value === 'perguntas')">
+      <div class="field">
+        <label for="search-forum">Buscar tópicos</label>
+        <input id="search-forum" #searchInput type="search" name="q" maxlength="120" [value]="query()">
+      </div>
+      <div class="field">
+        <label for="forum-filter">Tipo de tópico</label>
+        <select id="forum-filter" #kind>
+          <option value="" [selected]="!questionsOnly()">Todos os tópicos</option>
+          <option value="perguntas" [selected]="questionsOnly()">Perguntas e respostas</option>
+        </select>
+      </div>
+      <button class="primary" type="submit">Buscar</button>
+    </form>
+  }
+
+  @let current = result();
+  @switch (current.kind) {
+    @case ('loading') {
+      <p role="status">Carregando…</p>
+    }
+    @case ('missing') {
+      <p class="card" role="status">{{ topicId() ? 'Tópico não encontrado.' : 'O fórum está indisponível no momento.' }}</p>
+    }
+    @case ('error') {
+      <div class="card">
+        <p role="alert">Não foi possível carregar o fórum.</p>
+        <button class="secondary" type="button" (click)="reload()">Tentar novamente</button>
+      </div>
+    }
+    @case ('list') {
+      <section aria-labelledby="forum-results">
+        <h2 id="forum-results" #resultsHeading tabindex="-1">{{ query() ? 'Resultados da busca' : questionsOnly() ? 'Perguntas e respostas' : 'Tópicos recentes' }}</h2>
+        <p class="hint" role="status">
+          @if (current.page.topics.length === 0) {
+            {{ query() ? 'Nenhum tópico encontrado.' : 'Nenhum tópico nesta página.' }}
+          } @else {
+            {{ current.page.topics.length === 1 ? '1 tópico' : current.page.topics.length + ' tópicos' }}
+            nesta página.
+          }
+        </p>
+        @for (topic of current.page.topics; track topic.id) {
+          <article class="card forum-topic">
+            <p class="eyebrow">{{ kinds[topic.kind] }} · {{ labels[topic.category] }}</p>
+            <h3><a class="agenda-add" [routerLink]="['/forum', topic.id]" queryParamsHandling="preserve">{{ title(topic) }}</a></h3>
+            <p>{{ excerpt(topic.body) }}</p>
+          </article>
+        }
+        @if (page() > 1 || current.page.hasNext) {
+          <nav class="forum-pagination" aria-label="Páginas do fórum">
+            @if (page() > 1) {
+              <button class="secondary" type="button" (click)="changePage(page() - 1)">Anterior</button>
+            }
+            <span>Página {{ page() }}</span>
+            @if (current.page.hasNext) {
+              <button class="secondary" type="button" (click)="changePage(page() + 1)">Próxima</button>
+            }
+          </nav>
+        }
+      </section>
+      @if (participation() === 'ACTIVE' || participation() === 'INACTIVE' || participation() === 'VISITOR' || participation() === 'ERROR') {
+        <section aria-labelledby="forum-participation-title">
+          <h2 id="forum-participation-title">Participar do fórum</h2>
+          <ng-container [ngTemplateOutlet]="participationInfo" />
+          @if (participation() === 'ACTIVE' || participation() === 'INACTIVE') {
+            <app-forum [canParticipate]="participation() === 'ACTIVE'"
+                       (sessionExpired)="accessLost('VISITOR')" (accessLost)="accessLost('INACTIVE')"
+                       (withdrawn)="reload(false)" />
+          }
+        </section>
+      }
+    }
+    @case ('detail') {
+      @let topic = current.detail.topic;
+      @let canReport = participation() === 'ACTIVE' || participation() === 'INACTIVE';
+      <article class="card forum-topic" aria-labelledby="forum-topic-title">
+        <p class="eyebrow">{{ kinds[topic.kind] }} · {{ labels[topic.category] }}</p>
+        <h2 id="forum-topic-title">{{ title(topic) }}</h2>
+        @if (topic.rating; as rating) {
+          <p class="hint">Experiência da comunidade · Nota {{ rating }} de 5</p>
+        }
+        <p class="forum-text">{{ topic.body }}</p>
+        @if (canReport) {
+          <app-forum-report [topicId]="topic.id" kind="TOPIC" [targetId]="topic.id"
+                            [action]="topic.kind === 'QUESTION' ? 'Denunciar pergunta' : 'Denunciar tópico'" />
+        }
+        @for (image of current.detail.images; track image.id) {
+          <img [src]="imageUrl(topic.id, image.id)" [alt]="image.altText">
+          @if (canReport) {
+            <app-forum-report [topicId]="topic.id" kind="IMAGE" [targetId]="image.id" action="Denunciar imagem" />
+          }
+        }
+      </article>
+      <section class="card forum-topic" aria-labelledby="forum-comments-title">
+        <h2 id="forum-comments-title">{{ topic.kind === 'QUESTION' ? 'Respostas' : 'Comentários' }}</h2>
+        @if (current.detail.comments.length) {
+          <ul class="forum-comments">
+            @for (comment of current.detail.comments; track comment.id) {
+              <li>
+                <p class="forum-text">{{ comment.body }}</p>
+                @if (canReport) {
+                  <app-forum-report [topicId]="topic.id" kind="COMMENT" [targetId]="comment.id"
+                                    [action]="topic.kind === 'QUESTION' ? 'Denunciar resposta' : 'Denunciar comentário'" />
+                }
+              </li>
+            }
+          </ul>
+        } @else {
+          <p class="hint">{{ topic.kind === 'QUESTION' ? 'Ainda não há respostas.' : 'Ainda não há comentários.' }}</p>
+        }
+        <ng-container [ngTemplateOutlet]="participationInfo" />
+        @if (participation() === 'ACTIVE') {
+          <form class="forum-comment-editor" (submit)="$event.preventDefault(); sendComment(topic)">
+            <fieldset [disabled]="sending()">
+              <div class="field">
+                <label for="forum-comment">{{ topic.kind === 'QUESTION' ? 'Sua resposta' : 'Seu comentário' }}</label>
+                <textarea id="forum-comment" #commentInput rows="4" maxlength="2000" required
+                          [value]="comment()" (input)="comment.set(commentInput.value)"></textarea>
+              </div>
+              <button class="primary" type="submit">Enviar para análise</button>
+            </fieldset>
+          </form>
+        }
+        @if (commentError()) {
+          <p #commentFeedback tabindex="-1" class="field-error" role="alert">{{ commentError() }}</p>
+        } @else if (commentNotice()) {
+          <p #commentFeedback tabindex="-1" role="status">{{ commentNotice() }}</p>
+        }
+      </section>
+    }
+  }
+</div>
+
+<ng-template #participationInfo>
+  @switch (participation()) {
+    @case ('VISITOR') {
+      <p>Para publicar e comentar, entre e confira as opções de assinatura.</p>
+      <a class="agenda-add forum-plan-link" routerLink="/configuracoes/assinatura">Entrar para consultar a assinatura</a>
+    }
+    @case ('INACTIVE') {
+      <p>Publicar e comentar exige uma assinatura ativa.</p>
+      <div class="forum-participation-actions">
+        <a class="agenda-add" routerLink="/configuracoes/assinatura">Ver assinatura</a>
+        <button class="secondary" type="button" (click)="refreshParticipation()">Atualizar acesso</button>
+      </div>
+    }
+    @case ('ERROR') {
+      <p role="status">Não foi possível verificar o acesso para participar.</p>
+      <button class="secondary forum-plan-link" type="button" (click)="refreshParticipation()">Verificar novamente</button>
+    }
+  }
+</ng-template>

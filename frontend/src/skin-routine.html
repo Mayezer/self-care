@@ -1,0 +1,145 @@
+@switch (mode()) {
+  @case ('choice') {
+    <section class="card new-care-details" aria-labelledby="skin-routine-heading">
+      <h2 #heading id="skin-routine-heading" tabindex="-1">Monte sua rotina de pele</h2>
+      <p>Comece com alguns passos sugeridos ou escolha seus próprios cuidados.</p>
+      <div class="skin-routine-actions">
+        <button type="button" class="primary" (click)="choose('questionnaire')">Receber sugestão</button>
+        <button type="button" class="secondary" (click)="choose('draft')">Montar manualmente</button>
+      </div>
+    </section>
+  }
+  @case ('questionnaire') {
+    <section class="card new-care-details" aria-labelledby="skin-routine-heading">
+      <h2 #heading id="skin-routine-heading" tabindex="-1">Como é seu cuidado com a pele?</h2>
+      <p>Responda o que quiser. Você pode editar a sugestão antes de salvar.</p>
+      <div class="field">
+        <label for="skin-timing">Qual período você quer organizar?</label>
+        <select #timingField id="skin-timing" [value]="timing()" (change)="chooseTiming(timingField.value)">
+          <option value="">Prefiro pular</option>
+          <option value="MORNING">Manhã</option>
+          <option value="NIGHT">Noite</option>
+          <option value="BOTH">Manhã e noite</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="skin-time">Quanto tempo você quer reservar?</label>
+        <select #timeField id="skin-time" [value]="time()" (change)="chooseTime(timeField.value)">
+          <option value="">Prefiro pular</option>
+          <option value="SHORT">Poucos minutos</option>
+          <option value="FLEXIBLE">Posso reservar mais tempo</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="skin-habit">Você costuma usar maquiagem?</label>
+        <select #habitField id="skin-habit" [value]="habit()" (change)="chooseHabit(habitField.value)">
+          <option value="">Prefiro pular</option>
+          <option value="MAKEUP">Sim</option>
+          <option value="NO_MAKEUP">Não</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="skin-perception">O que você percebe na sua pele?</label>
+        <select #perceptionField id="skin-perception" [value]="perception()" (change)="perception.set(perceptionField.value)">
+          <option value="">Prefiro pular</option>
+          <option value="OILINESS">Oleosidade</option>
+          <option value="DRYNESS">Ressecamento</option>
+          <option value="BOTH">Oleosidade e ressecamento</option>
+          <option value="NOTHING">Nada em especial</option>
+        </select>
+      </div>
+      <div class="skin-routine-actions">
+        <button type="button" class="primary" (click)="suggest()">Ver sugestão</button>
+        <button type="button" class="text-button" (click)="choose('choice')">Voltar</button>
+      </div>
+    </section>
+  }
+  @case ('draft') {
+    <form novalidate [attr.aria-busy]="saving()" (submit)="$event.preventDefault(); save()">
+      <section class="card new-care-details" aria-labelledby="skin-routine-heading">
+        <h2 #heading id="skin-routine-heading" tabindex="-1">Prévia da rotina de pele</h2>
+        @if (reason(); as message) { <p>{{ message }}</p> }
+        <p>Escolha os períodos que quer salvar e ajuste os dias e passos de cada um.</p>
+        <div class="new-care-nail-fields">
+          <div class="field">
+            <label for="skin-start">Data de início</label>
+            <input #startField id="skin-start" type="date" required [min]="today()" [value]="start() ?? today()"
+                   [readOnly]="saving()" [attr.aria-invalid]="errors()['startDate'] ? 'true' : null" (input)="start.set(startField.value)">
+          </div>
+          <div class="field">
+            <label for="skin-weeks">Duração em semanas</label>
+            <input #weeksField id="skin-weeks" type="number" min="1" max="12" required [value]="weeks()"
+                   [readOnly]="saving()" [attr.aria-invalid]="errors()['weeks'] ? 'true' : null" (input)="weeks.set(weeksField.value)">
+          </div>
+        </div>
+      </section>
+
+      @for (period of periods; track period.value) {
+        @let draft = drafts()[period.value];
+        @let prefix = 'skin-' + period.value;
+        <fieldset class="card new-care-details" [disabled]="saving()">
+          <legend>{{ period.label }}</legend>
+          <label class="skin-routine-check">
+            <input type="checkbox" [checked]="draft.enabled" (change)="update(period.value, { enabled: !draft.enabled })">
+            Incluir rotina da {{ period.label.toLowerCase() }}
+          </label>
+          @if (draft.enabled) {
+            <div class="field">
+              <label [for]="prefix + '-title'">Título da rotina da {{ period.label.toLowerCase() }}</label>
+              <input #titleField [id]="prefix + '-title'" type="text" maxlength="100" required
+                     [value]="draft.title" [attr.aria-invalid]="errors()[period.value + '.title'] ? 'true' : null"
+                     (input)="update(period.value, { title: titleField.value })">
+            </div>
+            <fieldset>
+              <legend>Dias da semana</legend>
+              <div class="weekdays">
+                @for (day of weekdays; track day.value) {
+                  <button type="button" class="day" [attr.aria-label]="day.label" [attr.data-day]="day.value"
+                          [attr.aria-pressed]="draft.weekdays.includes(day.value)" (click)="toggleDay(period.value, day.value)">
+                    <span>{{ day.short }}</span><span class="day-check" aria-hidden="true">✓</span>
+                  </button>
+                }
+              </div>
+            </fieldset>
+            <fieldset>
+              <legend>Passos em ordem</legend>
+              <ol class="skin-routine-edit-steps">
+                @for (step of draft.steps; track step.id; let index = $index) {
+                  <li>
+                    <div class="field">
+                      <label [for]="prefix + '-step-' + step.id">Passo {{ index + 1 }}</label>
+                      <input #stepField [id]="prefix + '-step-' + step.id" type="text" required maxlength="120"
+                             [value]="step.text" [attr.aria-invalid]="errors()[period.value + '.steps'] && !step.text.trim() ? 'true' : null"
+                             (input)="editStep(period.value, step.id, stepField.value)">
+                    </div>
+                    @if (draft.steps.length > 1) {
+                      <div class="skin-routine-actions">
+                        <button type="button" class="text-button" [attr.aria-label]="'Remover passo ' + (index + 1)"
+                                (click)="removeStep(period.value, index)">Remover</button>
+                      </div>
+                    }
+                  </li>
+                }
+              </ol>
+              @if (draft.steps.length < 8) {
+                <button type="button" class="secondary" (click)="addStep(period.value)">Adicionar passo</button>
+              }
+            </fieldset>
+          }
+        </fieldset>
+      }
+
+      @if (errorMessages().length) {
+        <div #errorSummary class="card field-error" role="alert" tabindex="-1">
+          <ul>
+            @for (message of errorMessages(); track message) { <li>{{ message }}</li> }
+          </ul>
+        </div>
+      }
+      <div class="skin-routine-actions">
+        <button type="submit" class="primary" [attr.aria-disabled]="saving()">{{ saving() ? 'Salvando…' : 'Salvar rotina' }}</button>
+        <button type="button" class="text-button" [disabled]="saving()" (click)="choose('choice')">Descartar prévia</button>
+      </div>
+    </form>
+  }
+}

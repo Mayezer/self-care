@@ -24,6 +24,10 @@ public class CareOccurrence {
     private Long accountId;
 
     private Long planId;
+    private Long cleaningSeriesId;
+
+    @Column(nullable = false)
+    private boolean cleaningCanceled;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
@@ -100,6 +104,10 @@ public class CareOccurrence {
 
     Long planId() {
         return planId;
+    }
+
+    boolean isSeriesCleaning() {
+        return cleaningSeriesId != null;
     }
 
     HairStage hairStage() {

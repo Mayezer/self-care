@@ -2,19 +2,24 @@ package br.com.autocuidado.hair;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import br.com.autocuidado.auth.AccountPrincipal;
 import br.com.autocuidado.auth.AccountTimeZones;
 import br.com.autocuidado.persistence.HairPlanService;
 import br.com.autocuidado.persistence.HairPlanService.Occurrence;
+import br.com.autocuidado.persistence.HairProfileStore;
 import br.com.autocuidado.persistence.PlanCreationConflictException;
 import br.com.autocuidado.recurrence.RecurrenceDateGenerator;
 import br.com.autocuidado.recurrence.RecurrenceDateGenerator.InvalidRecurrenceException;
 import br.com.autocuidado.recurrence.RecurrenceRequest;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +32,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 @RestController
 public class HairPlanController {
@@ -34,11 +40,16 @@ public class HairPlanController {
     private final RecurrenceDateGenerator generator;
     private final HairPlanService plans;
     private final AccountTimeZones timeZones;
+    private final HairProfileStore profiles;
+    private final boolean profileEnabled;
 
-    HairPlanController(RecurrenceDateGenerator generator, HairPlanService plans, AccountTimeZones timeZones) {
+    HairPlanController(RecurrenceDateGenerator generator, HairPlanService plans, AccountTimeZones timeZones,
+            HairProfileStore profiles, @Value("${app.hair.profile-enabled:false}") boolean profileEnabled) {
         this.generator = generator;
         this.plans = plans;
         this.timeZones = timeZones;
+        this.profiles = profiles;
+        this.profileEnabled = profileEnabled;
     }
 
     @PostMapping(path = "/api/hair-plans/preview", consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -50,6 +61,7 @@ public class HairPlanController {
 
         var errors = new LinkedHashMap<String, String>();
         var schedule = RecurrenceRequest.parse(request, errors);
+        var suggestion = parseSuggestion(request.path("suggestion"), errors);
         ZoneId zone = account == null ? null : timeZones.current(account.accountId());
         if (zone == null) {
             JsonNode timeZone = request.path("timeZone");
@@ -63,11 +75,21 @@ public class HairPlanController {
             return invalidFields(errors);
         }
 
-        var occurrences = generator.generate(schedule.startDate(), schedule.weeks(), schedule.weekdays(), zone)
-                .stream()
-                .map(date -> new Occurrence(date, HairStage.WASH_ONLY))
-                .toList();
-        return ResponseEntity.ok(new Preview(occurrences));
+        var dates = generator.generate(schedule.startDate(), schedule.weeks(), schedule.weekdays(), zone);
+        if (suggestion == null) {
+            return ResponseEntity.ok(new Preview(dates.stream()
+                    .map(date -> new Occurrence(date, HairStage.WASH_ONLY)).toList()));
+        }
+
+        var profile = profileEnabled && account != null && suggestion.useProfile() && suggestion.goal() == null
+                ? profiles.find(account.accountId()) : JsonNodeFactory.instance.objectNode();
+        var selection = HairScheduleModel.select(suggestion.goal(), profile);
+        var occurrences = new ArrayList<Occurrence>(dates.size());
+        for (int index = 0; index < dates.size(); index++) {
+            occurrences.add(new Occurrence(dates.get(index), selection.stageAt(index)));
+        }
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new SuggestedPreview(occurrences, selection.explanation()));
     }
 
     @PostMapping(path = "/api/hair-plans", consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -125,6 +147,28 @@ public class HairPlanController {
         return stages;
     }
 
+    private static SuggestionRequest parseSuggestion(JsonNode value, Map<String, String> errors) {
+        if (value.isMissingNode()) {
+            return null;
+        }
+        var useProfile = value.path("useProfile");
+        if (!value.isObject() || !Set.of("goal", "useProfile").containsAll(value.propertyNames())
+                || (!useProfile.isMissingNode() && !useProfile.isBoolean())) {
+            errors.put("suggestion", "Informe apenas o objetivo e se deseja usar as respostas de Meu cabelo.");
+            return null;
+        }
+        var goal = value.path("goal");
+        if (goal.isMissingNode()) {
+            return new SuggestionRequest(null, useProfile.asBoolean(false));
+        }
+        try {
+            return new SuggestionRequest(HairScheduleModel.valueOf(goal.asString("")), useProfile.asBoolean(false));
+        } catch (IllegalArgumentException exception) {
+            errors.put("suggestion", "Escolha um objetivo válido ou deixe o campo em branco.");
+            return null;
+        }
+    }
+
     @ExceptionHandler(InvalidRecurrenceException.class)
     ResponseEntity<FieldErrors> invalidRecurrence(InvalidRecurrenceException exception) {
         return invalidFields(RecurrenceRequest.fieldErrors(exception));
@@ -151,6 +195,8 @@ public class HairPlanController {
     }
 
     record Preview(List<Occurrence> occurrences) {}
+    record SuggestedPreview(List<Occurrence> occurrences, HairScheduleModel.Explanation suggestion) {}
+    private record SuggestionRequest(HairScheduleModel goal, boolean useProfile) {}
     record CreatedPlan(long planId) {}
     record FieldErrors(Map<String, String> errors) {}
 }

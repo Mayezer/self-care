@@ -3,16 +3,17 @@ import { afterNextRender, Component, computed, DOCUMENT, inject, Injector, signa
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { filter, map } from 'rxjs';
+import { FallingDecor } from './falling-decor';
 
 const THEMES = [
-  { value: 'light', label: 'Jasmin', icon: '🌼' },
-  { value: 'dark', label: 'Noite Intensa', icon: '🌙' },
-  { value: 'pink', label: 'Pétala', icon: '🌸' },
+  { value: 'light', label: 'Jasmin', image: '/design/themes/jasmin.svg' },
+  { value: 'dark', label: 'Noite Intensa', image: '/design/themes/noite.svg' },
+  { value: 'pink', label: 'Pétala', image: '/design/themes/petala.svg' },
 ] as const;
 
 @Component({
   selector: 'app-root',
-  imports: [RouterLink, RouterOutlet],
+  imports: [RouterLink, RouterOutlet, FallingDecor],
   templateUrl: './shell.html',
 })
 export class Shell {
@@ -26,23 +27,8 @@ export class Shell {
   private hasPage = false;
 
   protected readonly themes = THEMES;
-  protected readonly theme = signal(
-    THEMES.find(({ value }) => value === this.document.documentElement.getAttribute('data-theme')) ?? THEMES[0],
-  );
-
+  protected readonly theme = signal<typeof THEMES[number]>(THEMES[0]);
   protected readonly page = computed(() => this.url().split(/[/?#]/)[1] ?? '');
-  protected readonly stacked = computed(() => this.page() === 'novo-cuidado');
-  protected readonly backLink = computed(() => this.router.parseUrl(this.url()).queryParams['modo'] === 'realizado'
-    ? '/historico' : '/agenda');
-  protected readonly pageName = computed(() => {
-    if (this.stacked()) return 'Novo Cuidado';
-    if (this.page() === 'perfil') return 'Perfil';
-    if (this.page() === 'forum') return 'Fórum';
-    if (this.page() === 'meu-cabelo') return 'Meu cabelo';
-    if (this.page() === 'diario-capilar') return 'Diário capilar';
-    if (this.page() === 'configuracoes') return 'Configurações';
-    return this.tabs.find(tab => tab.path === '/' + this.page())?.text ?? 'Cronograma';
-  });
   protected readonly tabs = [
     { path: '/agenda', text: 'Agenda', icon: 'calendar_today' },
     { path: '/', text: 'Cronograma', icon: 'spa' },
@@ -56,6 +42,11 @@ export class Shell {
       const padding = this.document.defaultView?.getComputedStyle(root).scrollPaddingBlockStart;
       return [0, Number.parseFloat(padding ?? '') || 0];
     });
+    afterNextRender(() => {
+      // The early theme script sets the palette before paint; sync the hydrated controls afterwards.
+      const theme = THEMES.find(({ value }) => value === this.document.documentElement.dataset['theme']);
+      if (theme) this.theme.set(theme);
+    });
   }
 
   protected activeTab(path: string): boolean {
@@ -65,14 +56,27 @@ export class Shell {
   protected changeTheme(value: string): void {
     const theme = THEMES.find(option => option.value === value);
     if (!theme) return;
-
     this.theme.set(theme);
     this.document.documentElement.dataset['theme'] = theme.value;
     try {
       this.document.defaultView?.localStorage.setItem('autocuidado.theme', theme.value);
     } catch {
-      // Keep the active theme when the browser blocks storage.
+      // Keep the active preference when storage is blocked.
     }
+  }
+
+  protected closeThemeMenu(menu: HTMLDetailsElement, trigger: HTMLElement): void {
+    if (!menu.open) return;
+    menu.open = false;
+    trigger.focus();
+  }
+
+  protected outsideThemeMenu(event: Event, menu: HTMLDetailsElement): void {
+    if (menu.open && !event.composedPath().includes(menu)) menu.open = false;
+  }
+
+  protected leaveThemeMenu(event: FocusEvent, menu: HTMLDetailsElement): void {
+    if (menu.open && event.relatedTarget && !menu.contains(event.relatedTarget as Node)) menu.open = false;
   }
 
   protected focusPage(content: HTMLElement): void {

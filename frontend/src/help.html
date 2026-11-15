@@ -1,11 +1,18 @@
 <div class="page-width page-content help">
-  <header class="intro">
+  <header appPageHeading="help">
     <p class="eyebrow">Como usar a agenda</p>
     <h1 tabindex="-1">Ajuda</h1>
     <p>{{ guidesAvailable ? 'Aprenda a usar a agenda e encontre guias para os seus cuidados.' : 'Aprenda a usar a agenda.' }}</p>
   </header>
 
   <div class="help-topics">
+    @if (features.forumAvailable) {
+      <section class="card" aria-labelledby="help-forum">
+        <h2 id="help-forum">Fórum</h2>
+        <p>Leia relatos, avaliações e perguntas da comunidade sem precisar entrar.</p>
+        <a class="agenda-add" routerLink="/forum">Abrir fórum</a>
+      </section>
+    }
     @if (guidesAvailable) {
       <section class="card" aria-labelledby="guias">
         <h2 id="guias" tabindex="-1">Guias e FAQs</h2>

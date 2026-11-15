@@ -1,0 +1,110 @@
+<div class="vanity">
+  <p id="vanity-notice" class="hint" role="status" tabindex="-1">{{ loading() ? 'Carregando sua penteadeira…' : notice() }}</p>
+  @if (error()) {
+    <p id="vanity-error" class="field-error" role="alert" tabindex="-1">{{ error() }}</p>
+  }
+  @if (sessionExpired()) {
+    <p><a href="/penteadeira">Reabrir a Penteadeira</a></p>
+  }
+  @if (loadFailed()) {
+    @if (!sessionExpired()) {
+      <button class="secondary" type="button" (click)="load()">Tentar novamente</button>
+    }
+  } @else if (!loading()) {
+    @if (!sessionExpired()) {
+      <div class="section-heading">
+        <fieldset class="vanity-filters" [disabled]="!!draft() || !!removing() || pending()">
+          <legend class="visually-hidden">Filtrar itens da penteadeira</legend>
+          <label><input type="radio" name="vanity-view" [checked]="!missingOnly()" (change)="filter(false)"> Todos</label>
+          <label><input id="vanity-missing" type="radio" name="vanity-view" [checked]="missingOnly()" (change)="filter(true)"> O que falta</label>
+        </fieldset>
+        <button id="vanity-add" class="primary" type="button" [disabled]="!!draft() || !!removing() || pending()" (click)="openEditor()">
+          <span class="material-symbol" aria-hidden="true">add</span> Adicionar item
+        </button>
+      </div>
+    }
+    @if (draft(); as item) {
+      <form class="card vanity-editor" novalidate aria-labelledby="vanity-editor-title" [attr.aria-busy]="pending()"
+            (submit)="$event.preventDefault(); save(item)">
+        <h2 id="vanity-editor-title">{{ item.creating ? 'Novo item' : 'Editar item' }}</h2>
+        <fieldset [disabled]="pending()">
+          <div class="field">
+            <label for="vanity-name">Nome <span aria-hidden="true">*</span></label>
+            <input #name id="vanity-name" name="name" required maxlength="100" [value]="item.name" [readOnly]="sessionExpired()"
+                   [attr.aria-invalid]="errors().name ? 'true' : null"
+                   [attr.aria-describedby]="errors().name ? 'vanity-name-error' : null" (input)="update({ name: name.value })">
+            @if (errors().name; as message) {
+              <p id="vanity-name-error" class="field-error" role="alert">{{ message }}</p>
+            }
+          </div>
+          <div class="field">
+            <label for="vanity-category">Categoria <span class="hint">(opcional)</span></label>
+            <input #category id="vanity-category" name="category" maxlength="60" placeholder="Ex.: Olhos"
+                   [value]="item.category ?? ''" [readOnly]="sessionExpired()" [attr.aria-invalid]="errors().category ? 'true' : null"
+                   [attr.aria-describedby]="errors().category ? 'vanity-category-error' : null"
+                   (input)="update({ category: category.value })">
+            @if (errors().category; as message) {
+              <p id="vanity-category-error" class="field-error" role="alert">{{ message }}</p>
+            }
+          </div>
+          <div class="field">
+            <label for="vanity-status">Situação</label>
+            <select #status id="vanity-status" name="status" [disabled]="sessionExpired()"
+                    [attr.aria-invalid]="errors().status ? 'true' : null"
+                    [attr.aria-describedby]="errors().status ? 'vanity-status-error' : null" (change)="updateStatus(status.value)">
+              @for (option of statuses; track option) {
+                <option [value]="option" [selected]="item.status === option">{{ labels[option] }}</option>
+              }
+            </select>
+            @if (errors().status; as message) {
+              <p id="vanity-status-error" class="field-error" role="alert">{{ message }}</p>
+            }
+          </div>
+          @if (!sessionExpired()) {
+            <div class="vanity-actions">
+              <button class="primary" type="submit">{{ pending() ? 'Salvando…' : 'Salvar item' }}</button>
+              <button class="secondary" type="button" (click)="cancelEdit(item)">Cancelar</button>
+            </div>
+          }
+        </fieldset>
+      </form>
+    }
+    @if (!sessionExpired()) {
+      @if (visibleItems().length) {
+        <ul class="vanity-items" role="list" aria-label="Itens da penteadeira">
+          @for (item of visibleItems(); track item.id) {
+            <li class="card vanity-item">
+              <div>
+                <h2 tabindex="-1" [id]="'vanity-item-' + item.id">{{ item.name }}</h2>
+                @if (item.category) { <p class="hint">{{ item.category }}</p> }
+                <p class="pill vanity-status">{{ labels[item.status] }}</p>
+              </div>
+              @if (removing()?.id === item.id) {
+                <div>
+                  <p>Remover {{ item.name }} da penteadeira?</p>
+                  <div class="vanity-actions">
+                    <button id="vanity-keep" class="secondary" type="button" [disabled]="pending()" (click)="cancelRemoval(item)">Manter item</button>
+                    <button class="secondary" type="button" [disabled]="pending()" (click)="remove(item)">Confirmar remoção</button>
+                  </div>
+                </div>
+              } @else {
+                <div class="vanity-actions">
+                  @if (item.status !== 'OWNED') {
+                    <button class="secondary" type="button" [attr.aria-label]="'Marcar como comprado: ' + item.name"
+                            [disabled]="!!draft() || !!removing() || pending()" (click)="purchase(item)">Marcar como comprado</button>
+                  }
+                  <button class="secondary" type="button" [id]="'vanity-edit-' + item.id" [attr.aria-label]="'Editar ' + item.name"
+                          [disabled]="!!draft() || !!removing() || pending()" (click)="openEditor(item)">Editar</button>
+                  <button class="secondary" type="button" [id]="'vanity-remove-' + item.id" [attr.aria-label]="'Remover ' + item.name"
+                          [disabled]="!!draft() || !!removing() || pending()" (click)="confirmRemoval(item)">Remover</button>
+                </div>
+              }
+            </li>
+          }
+        </ul>
+      } @else {
+        <p class="card">{{ missingOnly() ? 'Nenhum item para repor ou comprar.' : 'Sua penteadeira está vazia. Adicione seu primeiro item.' }}</p>
+      }
+    }
+  }
+</div>

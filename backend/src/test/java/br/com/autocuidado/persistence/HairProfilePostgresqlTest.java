@@ -9,6 +9,7 @@ import java.sql.DriverManager;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -65,7 +66,8 @@ class HairProfilePostgresqlTest {
                 long owner;
                 long plan;
                 try (var previous = new SpringApplicationBuilder(SelfCareApplication.class)
-                        .web(WebApplicationType.NONE).run("--spring.datasource.url=" + url, "--spring.flyway.target=4")) {
+                        .web(WebApplicationType.NONE).run("--spring.datasource.url=" + url, "--spring.flyway.target=4",
+                                "--spring.jpa.hibernate.ddl-auto=none")) {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
                     owner = jdbc.queryForObject("""
@@ -106,12 +108,22 @@ class HairProfilePostgresqlTest {
                     history = session.get(HISTORY, 200);
                     assertEquals("HYDRATION", history.at("/0/stage").asString());
                     assertTrue(session.get(PROFILE, 200).isEmpty());
+                    assertWashingFallback(session.preview(true), "INSUFFICIENT_ANSWERS");
                     session.put(PROFILE, profile, false, 403);
 
                     assertEquals(JSON.readTree(profile), session.put(PROFILE, profile, true, 200));
                     assertEquals(JSON.readTree(profile), session.get(PROFILE, 200));
                     other.login("other_profile");
                     assertTrue(other.get(PROFILE, 200).isEmpty());
+                    assertWashingFallback(session.preview(true), "NO_REVIEWED_MODEL");
+                    assertWashingFallback(session.preview(false), "INSUFFICIENT_ANSWERS");
+                    assertWashingFallback(other.preview(true), "INSUFFICIENT_ANSWERS");
+                    other.put(PROFILE, "{\"observations\":[\"NONE\"]}", true, 200);
+                    var reviewed = other.preview(true);
+                    assertWashingFallback(reviewed, "MODEL_SELECTED");
+                    assertEquals("organize-washes", reviewed.at("/suggestion/modelId").asString());
+                    assertWashingFallback(session.preview(true), "NO_REVIEWED_MODEL");
+                    assertEquals(JSON.readTree(profile), session.get(PROFILE, 200));
                     other.get(PROFILE + "/" + owner, 404);
                     other.put(PROFILE + "/" + owner, "{}", true, 404);
                     assertTrue(other.put(PROFILE, "{\"accountId\":" + owner + "}", true, 400).at("/errors/body").isString());
@@ -142,6 +154,7 @@ class HairProfilePostgresqlTest {
                     assertEquals(JSON.readTree("false"), features.path("hairProfileAvailable"));
                     assertEquals(JSON.readTree("false"), features.path("hairProductsAvailable"));
                     session.get(PROFILE, 404);
+                    assertWashingFallback(session.preview(true), "INSUFFICIENT_ANSWERS");
                     session.get(PRODUCTS, 404);
                     session.put(PROFILE, "{}", true, 404);
                     assertEquals(savedPlan, session.get(planPath, 200));
@@ -168,6 +181,15 @@ class HairProfilePostgresqlTest {
             } finally {
                 schemas.execute("DROP SCHEMA " + schema + " CASCADE");
             }
+        }
+    }
+
+    private static void assertWashingFallback(JsonNode preview, String status) {
+        assertEquals(status, preview.at("/suggestion/status").asString());
+        var occurrences = preview.path("occurrences");
+        assertEquals(2, occurrences.size());
+        for (JsonNode occurrence : occurrences) {
+            assertEquals("WASH_ONLY", occurrence.path("stage").asString());
         }
     }
 
@@ -309,6 +331,14 @@ class HairProfilePostgresqlTest {
             var request = request(path).header("Content-Type", "application/json")
                     .PUT(HttpRequest.BodyPublishers.ofString(body));
             return send(csrf ? withCsrf(request) : request, status);
+        }
+
+        JsonNode preview(boolean useProfile) throws Exception {
+            String body = """
+                    {"startDate":"%s","weeks":2,"weekdays":["MONDAY"],"suggestion":{"useProfile":%s}}
+                    """.formatted(LocalDate.now(ZoneOffset.UTC).plusDays(1), useProfile);
+            return send(request("/api/hair-plans/preview").header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)), 200);
         }
 
         private HttpRequest.Builder withCsrf(HttpRequest.Builder request) throws Exception {

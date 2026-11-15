@@ -7,12 +7,12 @@ import { postWithCsrf } from './csrf';
 import { CATEGORY_ICONS, CATEGORY_LABELS, STATUS_ICONS, STATUS_LABELS, careDetails } from './care-labels';
 import type { CareDetails } from './care-labels';
 import { CategoryFilter } from './category-filter';
+import { SkinRoutineSteps } from './skin-routine-steps';
 import { formatHairDate, WEEKDAYS } from './hair-preview-draft';
 
 type DateAction = 'complete' | 'reschedule';
 type Action = DateAction | 'skip' | 'undo';
-const ACTION_MESSAGES: Record<Action, string> = {
-  complete: 'Cuidado concluído.',
+const ACTION_MESSAGES: Record<Exclude<Action, 'complete'>, string> = {
   reschedule: 'Cuidado reagendado.',
   skip: 'Cuidado pulado.',
   undo: 'Cuidado voltou a ser planejado.',
@@ -29,6 +29,7 @@ interface AgendaItem extends CareDetails {
   completedOn: string | null;
   skippedOn: string | null;
   canReschedule: boolean;
+  cleaningSeries?: boolean;
   reminderTime?: string | null;
 }
 
@@ -51,7 +52,7 @@ interface DailyMessage {
 
 @Component({
   selector: 'app-agenda-week',
-  imports: [CategoryFilter, NgTemplateOutlet, RouterLink],
+  imports: [CategoryFilter, NgTemplateOutlet, RouterLink, SkinRoutineSteps],
   templateUrl: './agenda-week.html',
 })
 export class AgendaWeek {
@@ -259,7 +260,7 @@ export class AgendaWeek {
       });
   }
 
-  protected changeOccurrence(id: number, action: Action, date?: string): void {
+  protected changeOccurrence(item: AgendaItem, action: Action, date?: string): void {
     if (this.actionsUnavailable()) {
       return;
     }
@@ -268,11 +269,17 @@ export class AgendaWeek {
     this.dateError.set('');
     this.submitting.set(true);
     const dateField = action === 'complete' ? 'completedOn' : action === 'reschedule' ? 'plannedDate' : null;
-    postWithCsrf(this.http, `/api/occurrences/${id}/${action}`, dateField ? { [dateField]: date } : null)
+    postWithCsrf(this.http, `/api/occurrences/${item.id}/${action}`, dateField ? { [dateField]: date } : null, 'response')
       .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-        next: () => {
+        next: response => {
           this.submitting.set(false);
-          this.actionNotice.set(ACTION_MESSAGES[action]);
+          if (action === 'complete') {
+            const result = response.headers.get('X-Care-Completion');
+            this.actionNotice.set(result === 'applied' ? `Cuidado concluído: ${item.title}. Um cuidado de cada vez.`
+              : result === 'unchanged' ? 'Este cuidado já estava concluído.' : 'Cuidado atualizado.');
+          } else {
+            this.actionNotice.set(ACTION_MESSAGES[action]);
+          }
           if (action === 'reschedule' && date) {
             this.loadWeek(date, date);
           } else {
@@ -288,13 +295,15 @@ export class AgendaWeek {
           }
           const dateError = dateField && error.error?.errors?.[dateField];
           const editor = this.dateEditor();
-          if (editor?.id === id && editor.action === action && typeof dateError === 'string' && dateError) {
+          if (editor?.id === item.id && editor.action === action && typeof dateError === 'string' && dateError) {
             this.dateError.set(dateError);
             afterNextRender(() => this.actionDate()?.nativeElement.focus(), { injector: this.injector });
             return;
           }
           if (error.status === 404 || error.status === 409) {
-            this.actionError.set('O cuidado não está mais disponível para esta ação.');
+            const statusError = error.error?.errors?.status;
+            this.actionError.set(error.status === 409 && typeof statusError === 'string'
+              ? statusError : 'O cuidado não está mais disponível para esta ação.');
             this.loadWeek(this.week()?.days[0] ?? null, this.selectedDate());
             return;
           }

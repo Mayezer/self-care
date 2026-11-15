@@ -1,3 +1,4 @@
+import { PageHeading } from './page-heading';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -10,13 +11,14 @@ import { HairProfile } from './hair-profile';
 import { HairProducts } from './hair-products';
 import { HairDiary } from './hair-diary';
 import { History } from './history';
-import { Forum } from './forum';
 import { NewCare } from './new-care';
 import { ReminderSettings } from './reminder-settings';
 import { SubscriptionSettings } from './subscription-settings';
 import { AccountSessions } from './account-sessions';
 import { IdentityFlow, type LoginStep } from './identity-flow';
 import { PasswordChange } from './password-change';
+import { Vanity } from './vanity';
+import { MakeupCleaning } from './makeup-cleaning';
 
 interface AgendaAccount {
   username: string | null;
@@ -28,6 +30,7 @@ interface AgendaAccount {
   hairProductsAvailable: boolean;
   guidesAvailable: boolean;
   forumAvailable: boolean;
+  forumPublicReadingAvailable: boolean;
   billingAvailable: boolean;
   hairDiaryAvailable: boolean;
   registrationEnabled: boolean;
@@ -38,8 +41,8 @@ type AuthMode = 'login' | 'register' | 'confirm';
 
 @Component({
   selector: 'app-agenda',
-  imports: [AgendaWeek, HairDiary, HairProfile, HairProducts, History, Forum, NewCare, ReminderSettings,
-    SubscriptionSettings, AccountSessions, IdentityFlow, PasswordChange, RouterLink],
+  imports: [PageHeading, AgendaWeek, HairDiary, HairProfile, HairProducts, History, NewCare, ReminderSettings,
+    SubscriptionSettings, AccountSessions, IdentityFlow, PasswordChange, Vanity, MakeupCleaning, RouterLink],
   templateUrl: './agenda.html',
 })
 export class Agenda {
@@ -48,24 +51,26 @@ export class Agenda {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly heading = viewChild<ElementRef<HTMLHeadingElement>>('heading');
+  private readonly cleaning = viewChild(MakeupCleaning);
   private readonly emailField = viewChild<ElementRef<HTMLInputElement>>('emailInput');
   private readonly codeField = viewChild<ElementRef<HTMLInputElement>>('codeInput');
   private readonly passwordField = viewChild<ElementRef<HTMLInputElement>>('passwordInput');
 
-  private readonly view = inject(ActivatedRoute).snapshot.data['view'];
-  protected readonly isAgenda = !this.view;
+  private readonly route = inject(ActivatedRoute);
+  private readonly view = this.route.snapshot.data['view'];
   protected readonly showHistory = this.view === 'history';
   protected readonly showNewCare = this.view === 'new-care';
+  protected readonly showVanity = this.view === 'vanity';
   protected readonly showProfile = this.view === 'profile';
-  protected readonly showForum = this.view === 'forum';
   protected readonly showHairProfile = this.view === 'hair-profile';
   protected readonly showHairProducts = this.view === 'hair-products';
   protected readonly showHairDiary = this.view === 'hair-diary';
   protected readonly showReminders = this.view === 'reminders';
   protected readonly showSubscription = this.view === 'subscription';
-  protected readonly pageTitle = this.showHairProducts ? 'Produtos' : this.showHairDiary ? 'Diário capilar' : this.showSubscription ? 'Assinatura' : this.showForum ? 'Fórum' : this.showReminders ? 'Lembretes' : this.showHairProfile ? 'Meu cabelo'
+  protected readonly accessHeadingIcon = this.showHistory ? 'history' : this.view ? 'account-access' : 'calendar_today';
+  protected readonly pageTitle = this.showVanity ? 'Penteadeira' : this.showHairProducts ? 'Produtos' : this.showHairDiary ? 'Diário capilar' : this.showSubscription ? 'Assinatura' : this.showReminders ? 'Lembretes' : this.showHairProfile ? 'Meu cabelo'
     : this.showProfile ? 'Perfil' : this.showHistory ? 'Histórico' : this.showNewCare ? 'Novo cuidado' : 'Agenda';
-  protected readonly accountArea = this.showHairProducts ? 'as sugestões de produtos' : this.showHairDiary ? 'o diário capilar' : this.showSubscription ? 'a assinatura' : this.showForum ? 'o fórum' : this.showReminders ? 'as configurações' : this.showHairProfile || this.showProfile
+  protected readonly accountArea = this.showVanity ? 'a penteadeira' : this.showHairProducts ? 'as sugestões de produtos' : this.showHairDiary ? 'o diário capilar' : this.showSubscription ? 'a assinatura' : this.showReminders ? 'as configurações' : this.showHairProfile || this.showProfile
     ? 'o perfil' : this.showHistory ? 'o histórico' : 'a agenda';
   protected readonly careRecorded = this.router.currentNavigation()?.extras.info === 'care-recorded';
   protected readonly scheduleNotice = this.router.currentNavigation()?.extras.info === 'skin-plan-scheduled'
@@ -81,10 +86,10 @@ export class Agenda {
   protected readonly errors = signal<FieldErrors>({});
   protected readonly error = signal('');
   protected readonly notice = signal('');
-  protected readonly identity = signal<LoginStep | { mfa: 'reset'; needsEmail: false } | null>(null);
+  protected readonly identity = signal<LoginStep | { mfa: 'reset' } | null>(null);
 
   constructor() {
-    this.loadAgenda(this.showHairDiary || this.showSubscription || this.showProfile || this.showHairProfile || this.showHairProducts);
+    this.loadAgenda(this.showVanity || this.showHairDiary || this.showSubscription || this.showProfile || this.showHairProfile || this.showHairProducts);
     if (this.hairPreviewDraft || this.view) {
       afterNextRender(() => this.heading()?.nativeElement.focus());
     }
@@ -106,7 +111,11 @@ export class Agenda {
         this.account.set(account);
         this.checking.set(false);
         if (focusHeading && !this.showNewCare) {
-          afterNextRender(() => this.heading()?.nativeElement.focus(), { injector: this.injector });
+          afterNextRender(() => {
+            const cleaning = this.route.snapshot.fragment === 'limpeza' ? this.cleaning() : undefined;
+            if (cleaning) cleaning.focusHeading();
+            else this.heading()?.nativeElement.focus();
+          }, { injector: this.injector });
         }
       },
       error: (error: HttpErrorResponse) => {
@@ -161,7 +170,7 @@ export class Agenda {
 
   protected requestPasswordRecovery(): void {
     this.clearMessages();
-    this.identity.set({ mfa: 'reset', needsEmail: false });
+    this.identity.set({ mfa: 'reset' });
   }
 
   protected closeIdentity(): void {

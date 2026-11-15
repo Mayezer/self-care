@@ -1,11 +1,15 @@
 @if (showNewCare && account(); as current) {
   <app-new-care [today]="current.today" />
 } @else {
-  <div class="page-width page-content" [class.history-page]="showHistory" [class.hair-profile-page]="showHairProfile || showHairProducts || showHairDiary || showReminders" [class.agenda-width]="isAgenda">
+  <div class="page-width page-content" [class.history-page]="showHistory" [class.hair-profile-page]="showHairProfile || showHairProducts || showHairDiary || showReminders">
     @if (account(); as current) {
       @if (showProfile) {
-        <section class="card agenda-card" aria-labelledby="profile-title">
-          <h1 #heading id="profile-title" tabindex="-1">Perfil</h1>
+        <header appPageHeading="person">
+          <p class="eyebrow">Sua conta</p>
+          <h1 #heading tabindex="-1">Perfil</h1>
+          <p>Gerencie seus dados, sessões e preferências de cuidado.</p>
+        </header>
+        <section class="card agenda-card" aria-label="Configurações da conta">
           <div class="profile-account">
             <span class="editorial-icon material-symbol" aria-hidden="true">person</span>
             <div>
@@ -22,6 +26,11 @@
               <span class="material-symbol" aria-hidden="true">chevron_right</span>
             </a>
           }
+          <a class="profile-hair-link" routerLink="/penteadeira">
+            <span class="category-icon material-symbol" data-category="MAKEUP" aria-hidden="true">auto_awesome</span>
+            <span><strong>Penteadeira</strong><span class="hint">Sua lista privada de maquiagem</span></span>
+            <span class="material-symbol" aria-hidden="true">chevron_right</span>
+          </a>
           @if (current.hairDiaryAvailable) {
             <a class="profile-hair-link" routerLink="/diario-capilar">
               <span class="category-icon" data-category="HAIR" aria-hidden="true"><span class="material-symbol">photo_camera</span></span>
@@ -29,7 +38,7 @@
               <span class="material-symbol" aria-hidden="true">chevron_right</span>
             </a>
           }
-          @if (current.forumAvailable) {
+          @if (current.forumPublicReadingAvailable) {
             <a class="profile-hair-link" routerLink="/forum">
               <span class="material-symbol" aria-hidden="true">forum</span>
               <span><strong>Fórum</strong><span class="hint">Relatos e avaliações de produtos</span></span>
@@ -54,20 +63,19 @@
             <p class="field-error" role="alert">{{ message }}</p>
           }
         </section>
-      } @else if (showForum) {
-        <header class="intro">
-          <h1 #heading tabindex="-1">Fórum</h1>
-          @if (current.forumAvailable) {
-            <p>Compartilhe um relato de autocuidado ou avalie um produto. Cada envio passa por revisão.</p>
-          } @else {
-            <p>O fórum está indisponível no momento.</p>
-          }
+      } @else if (showVanity) {
+        <header appPageHeading="auto_awesome">
+          <p class="eyebrow">Maquiagem</p>
+          <h1 #heading tabindex="-1">Penteadeira</h1>
+          <p>Organize suas maquiagens, acompanhe o que falta comprar e planeje a limpeza dos acessórios.</p>
         </header>
-        @if (current.forumAvailable) {
-          <app-forum (sessionExpired)="loadAgenda()" />
-        }
+        <nav class="vanity-links" aria-label="Seções da Penteadeira">
+          <a class="agenda-add" routerLink="/penteadeira" fragment="limpeza" (click)="cleaningPanel.focusHeading()">Lembretes de limpeza</a>
+        </nav>
+        <app-vanity />
+        <app-makeup-cleaning #cleaningPanel [remindersAvailable]="current.remindersAvailable" />
       } @else if (showHairProfile) {
-        <header class="intro hair-profile-intro">
+        <header appPageHeading="spa">
           <p class="eyebrow">Perfil privado · opcional</p>
           <h1 #heading tabindex="-1">Meu cabelo</h1>
           @if (current.hairProfileAvailable) {
@@ -84,7 +92,7 @@
           </div>
         }
       } @else if (showHairProducts) {
-        <header class="intro hair-profile-intro">
+        <header appPageHeading="spa">
           <p class="eyebrow">Meu cabelo</p>
           <h1 #heading tabindex="-1">Produtos</h1>
         </header>
@@ -101,7 +109,7 @@
           </div>
         }
       } @else if (showHairDiary) {
-        <header class="intro hair-profile-intro">
+        <header appPageHeading="photo_camera">
           <h1 #heading tabindex="-1">Diário capilar</h1>
           <p>Registre fotos do seu cabelo e acompanhe as mudanças ao longo do tempo.</p>
         </header>
@@ -111,17 +119,22 @@
           <p class="info-strip">O diário capilar está indisponível no momento.</p>
         }
       } @else if (showSubscription) {
-        <section class="card agenda-card" aria-labelledby="subscription-title">
-          <h1 #heading id="subscription-title" tabindex="-1">Assinatura</h1>
+        <header appPageHeading="credit_card">
+          <p class="eyebrow">Configurações</p>
+          <h1 #heading tabindex="-1">Assinatura</h1>
+        </header>
+        <section class="card agenda-card" aria-label="Gerenciar assinatura">
           @if (current.billingAvailable) {
-            <app-subscription-settings (sessionExpired)="loadAgenda()" />
+            <app-subscription-settings [forumAvailable]="current.forumAvailable"
+                                       [hairDiaryAvailable]="current.hairDiaryAvailable"
+                                       (sessionExpired)="loadAgenda()" />
           } @else {
             <p>A assinatura está indisponível no momento.</p>
             <a class="secondary" routerLink="/perfil">Voltar ao perfil</a>
           }
         </section>
       } @else if (showReminders) {
-        <header class="intro hair-profile-intro">
+        <header appPageHeading="notifications">
           <p class="eyebrow">Configurações</p>
           <h1 #heading tabindex="-1">Lembretes</h1>
           <p>Escolha quais cuidados mostram um lembrete com horário na sua agenda.</p>
@@ -135,7 +148,11 @@
           </div>
         }
       } @else if (showHistory) {
-        <h1 #heading class="screen-title" tabindex="-1">{{ pageTitle }}</h1>
+        <header appPageHeading="history">
+          <p class="eyebrow">Seu percurso</p>
+          <h1 #heading tabindex="-1">{{ pageTitle }}</h1>
+          <p>Relembre os cuidados que você registrou.</p>
+        </header>
         <app-history [recorded]="careRecorded" [today]="current.today" (sessionExpired)="loadAgenda()" />
         <section class="card history-next-steps" aria-labelledby="history-next-title">
           <div>
@@ -151,24 +168,28 @@
           <a class="secondary" routerLink="/agenda">Abrir agenda</a>
         </section>
       } @else {
-        <div class="section-heading">
-          <h1 #heading class="screen-title" tabindex="-1">{{ pageTitle }}</h1>
-          @if (current.remindersAvailable) {
-            <a class="agenda-add" routerLink="/configuracoes/lembretes">Configurar lembretes</a>
-          }
-        </div>
+        <header appPageHeading="calendar_today">
+          <p class="eyebrow">Sua rotina</p>
+          <h1 #heading tabindex="-1">{{ pageTitle }}</h1>
+          <p>Acompanhe os próximos cuidados e organize a sua semana.</p>
+          <a pageHeadingAction class="secondary" [hidden]="!current.remindersAvailable"
+             routerLink="/configuracoes/lembretes">Configurar lembretes</a>
+        </header>
         <app-agenda-week [scheduleNotice]="scheduleNotice" (sessionExpired)="loadAgenda()" />
       }
     } @else {
-      <section class="card agenda-card" aria-labelledby="agenda-title">
-        <h1 #heading id="agenda-title" tabindex="-1">{{ hairPreviewDraft ? 'Entre para retomar a prévia' : pageTitle }}</h1>
+      <header [appPageHeading]="accessHeadingIcon">
+        <p class="eyebrow">Seu espaço de autocuidado</p>
+        <h1 #heading tabindex="-1">{{ hairPreviewDraft ? 'Entre para retomar a prévia' : pageTitle }}</h1>
+      </header>
+      <section class="card agenda-card" aria-label="Acesso à conta">
         @if (checking()) {
           <p role="status">Verificando sua sessão…</p>
         } @else if (unavailable()) {
           <p role="alert">Não foi possível carregar {{ accountArea }}. Tente novamente.</p>
           <button class="primary" type="button" (click)="loadAgenda()">Tentar novamente</button>
         } @else if (identity(); as step) {
-          <app-identity-flow [initial]="step.mfa" [needsEmail]="step.needsEmail" (cancelled)="closeIdentity()"
+          <app-identity-flow [initial]="step.mfa" (cancelled)="closeIdentity()"
                              (authenticated)="identityAuthenticated()" (resetDone)="passwordReset()" />
         } @else {
       @switch (mode()) {

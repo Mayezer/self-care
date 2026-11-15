@@ -1,3 +1,4 @@
+import { PageHeading } from './page-heading';
 import { HttpClient } from '@angular/common/http';
 import { Component, inject } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -5,25 +6,31 @@ import { catchError, map, of } from 'rxjs';
 import { HELP_GUIDES } from './help-guides';
 import { PUBLISH_GUIDES } from './publication';
 
-export function loadGuidesAvailability() {
-  if (PUBLISH_GUIDES) return of(true);
-  return inject(HttpClient).get<{ guidesAvailable: boolean }>('/api/help/features').pipe(
-    map(features => features?.guidesAvailable === true),
-    catchError(() => of(false)),
+interface HelpFeatures {
+  guidesAvailable: boolean;
+  forumAvailable: boolean;
+}
+
+export function loadHelpFeatures() {
+  return inject(HttpClient).get<HelpFeatures>('/api/help/features').pipe(
+    map(features => ({ guidesAvailable: PUBLISH_GUIDES || features?.guidesAvailable === true,
+      forumAvailable: features?.forumAvailable === true })),
+    catchError(() => of({ guidesAvailable: PUBLISH_GUIDES, forumAvailable: false })),
   );
 }
 
 export function allowGuide() {
   const help = inject(Router).createUrlTree(['/ajuda']);
-  return loadGuidesAvailability().pipe(map(available => available || help));
+  return loadHelpFeatures().pipe(map(features => features.guidesAvailable || help));
 }
 
 @Component({
   selector: 'app-help',
-  imports: [RouterLink],
+  imports: [PageHeading, RouterLink],
   templateUrl: './help.html',
 })
 export class Help {
-  protected readonly guidesAvailable = inject(ActivatedRoute).snapshot.data['guidesAvailable'] === true;
+  protected readonly features: HelpFeatures = inject(ActivatedRoute).snapshot.data['features'];
+  protected readonly guidesAvailable = this.features.guidesAvailable;
   protected readonly guides = HELP_GUIDES;
 }

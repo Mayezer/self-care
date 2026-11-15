@@ -1,22 +1,20 @@
 <div class="page-width page-content new-care">
-  <header class="new-care-heading section-heading">
-    <div>
-      <p class="eyebrow">Novo registro</p>
-      <h1 #heading tabindex="-1">Adicionar cuidado</h1>
-    </div>
-    <a class="icon-button close-button" [routerLink]="fromHistory ? '/historico' : '/agenda'" aria-label="Fechar formulário">
+  <header appPageHeading="calendar_add_on">
+    <p class="eyebrow">Novo registro</p>
+    <h1 #heading tabindex="-1">Adicionar cuidado</h1>
+    @if (!routineSaving()) {
+    <a pageHeadingAction class="icon-button close-button" [routerLink]="fromHistory ? '/historico' : '/agenda'" aria-label="Fechar formulário">
       <span class="material-symbol" aria-hidden="true">close</span>
     </a>
+    }
   </header>
   <aside class="editorial-banner ritual-banner">
-    <span class="editorial-icon material-symbol" aria-hidden="true">self_improvement</span>
+    <img class="ritual-image" src="/design/care-ritual.webp" alt="" width="512" height="279">
     <div><strong>Ritual consciente</strong><p>Reserve um momento para cuidar de você.</p></div>
   </aside>
 
-  <form novalidate (submit)="$event.preventDefault(); save()" [attr.aria-busy]="submitting()">
-    @let isRecurring = category() === 'SKIN' && recurring();
-    @let fields = categories[category()];
-    <fieldset [disabled]="submitting()" aria-describedby="care-intent-hint">
+  <div class="new-care-details">
+    <fieldset [disabled]="submitting() || routineSaving()" aria-describedby="care-intent-hint">
       <legend>Objetivo do registro</legend>
       <div class="new-care-options segmented-options">
         <label>
@@ -32,7 +30,7 @@
         ? 'Registre no histórico uma maquiagem ou um cuidado de unhas que você já fez.'
         : 'Reserve um momento para cuidar de você.' }}</p>
     </fieldset>
-    <fieldset [disabled]="submitting()">
+    <fieldset [disabled]="submitting() || routineSaving()">
       <legend>Categoria do cuidado</legend>
       <span class="care-category-badge selected-category" [attr.data-category]="category()" aria-hidden="true">{{ categoryLabels[category()] }}</span>
       <div class="new-care-categories">
@@ -59,96 +57,17 @@
       </div>
     </fieldset>
 
-    <div class="card field">
-      <label for="care-date"><span class="material-symbol" aria-hidden="true">event_available</span> {{ direct() ? 'Data de realização' : isRecurring ? 'Data de início' : 'Data planejada' }} <span aria-hidden="true">*</span></label>
-      <input #careDate id="care-date" [name]="direct() ? 'completedOn' : 'plannedDate'" type="date" required
-             [min]="direct() ? '0001-01-01' : today()" [max]="direct() ? today() : '9999-12-31'"
-             [value]="(direct() ? completedOn() : plannedDate()) ?? today()" [readOnly]="submitting()"
-             [attr.aria-invalid]="errors().date ? 'true' : null"
-             [attr.aria-describedby]="errors().date ? 'care-date-hint care-date-error' : 'care-date-hint'"
-             (input)="updateDate(careDate.value)">
-      <p id="care-date-hint" class="hint">{{ direct() ? 'Escolha hoje ou uma data passada.' : 'Escolha hoje ou uma data futura.' }}</p>
-      @if (errors().date; as message) {
-        <p id="care-date-error" class="field-error" role="alert">{{ message }}</p>
-      }
-    </div>
-
-    <div class="card new-care-details">
-      <div class="field">
-        <label for="care-title">{{ fields.title }} <span aria-hidden="true">*</span></label>
-        <input #title id="care-title" name="title" type="text" required [placeholder]="fields.placeholder"
-               [value]="titles()[category()]"
-               [readOnly]="submitting()" [attr.aria-invalid]="errors().title ? 'true' : null"
-               [attr.aria-describedby]="errors().title ? 'care-title-error' : null" (input)="updateTitle(title.value)">
-        @if (errors().title; as message) {
-          <p id="care-title-error" class="field-error" role="alert">{{ message }}</p>
-        }
-      </div>
-
-      @if (category() === 'SKIN') {
-        <fieldset [disabled]="submitting()" [attr.aria-describedby]="errors().period ? 'care-period-error' : null">
-          <legend>Período <span class="hint">(opcional)</span></legend>
-          <div class="new-care-options">
-            <label>
-              <input #firstPeriod type="radio" name="period" value="" [checked]="period() === ''" (change)="choosePeriod('')">
-              <span>Sem período</span>
-            </label>
-            <label>
-              <input type="radio" name="period" value="MORNING" [checked]="period() === 'MORNING'" (change)="choosePeriod('MORNING')">
-              <span>Manhã</span>
-            </label>
-            <label>
-              <input type="radio" name="period" value="NIGHT" [checked]="period() === 'NIGHT'" (change)="choosePeriod('NIGHT')">
-              <span>Noite</span>
-            </label>
-          </div>
-          @if (isRecurring) {
-            <p class="hint">O período vale para todos os dias da rotina.</p>
-          }
-          @if (errors().period; as message) {
-            <p id="care-period-error" class="field-error" role="alert">{{ message }}</p>
-          }
-        </fieldset>
-      } @else if (category() === 'MAKEUP') {
-        <div class="field">
-          <label for="care-note">Notas sobre produtos e visual <span class="hint">(opcional)</span></label>
-          <textarea #note id="care-note" name="note" rows="3" placeholder="Ex.: Blush líquido e máscara marrom"
-                    [value]="this.note()" [readOnly]="submitting()" [attr.aria-invalid]="errors().note ? 'true' : null"
-                    [attr.aria-describedby]="errors().note ? 'care-note-error' : null"
-                    (input)="this.note.set(note.value); clearField('note')"></textarea>
-          @if (errors().note; as message) {
-            <p id="care-note-error" class="field-error" role="alert">{{ message }}</p>
-          }
-        </div>
-      } @else {
-        <div class="new-care-nail-fields">
-          <div class="field">
-            <label for="care-color">Cor <span class="hint">(opcional)</span></label>
-            <input #polishColor id="care-color" name="polishColor" type="text" placeholder="Ex.: Lavanda"
-                   [value]="this.polishColor()" [readOnly]="submitting()" [attr.aria-invalid]="errors().polishColor ? 'true' : null"
-                   [attr.aria-describedby]="errors().polishColor ? 'care-color-error' : null"
-                   (input)="this.polishColor.set(polishColor.value); clearField('polishColor')">
-            @if (errors().polishColor; as message) {
-              <p id="care-color-error" class="field-error" role="alert">{{ message }}</p>
-            }
-          </div>
-          <div class="field">
-            <label for="care-product">Produto ou esmalte <span class="hint">(opcional)</span></label>
-            <input #polishProduct id="care-product" name="polishProduct" type="text" placeholder="Ex.: Base fortificante"
-                   [value]="this.polishProduct()" [readOnly]="submitting()" [attr.aria-invalid]="errors().polishProduct ? 'true' : null"
-                   [attr.aria-describedby]="errors().polishProduct ? 'care-product-error' : null"
-                   (input)="this.polishProduct.set(polishProduct.value); clearField('polishProduct')">
-            @if (errors().polishProduct; as message) {
-              <p id="care-product-error" class="field-error" role="alert">{{ message }}</p>
-            }
-          </div>
-        </div>
-      }
-    </div>
+    @if (category() === 'MAKEUP') {
+      <a class="card profile-hair-link" routerLink="/penteadeira">
+        <span class="category-icon material-symbol" data-category="MAKEUP" aria-hidden="true">auto_awesome</span>
+        <span><strong>Penteadeira</strong><span class="hint">Veja o que você tem e o que falta comprar</span></span>
+        <span class="material-symbol" aria-hidden="true">chevron_right</span>
+      </a>
+    }
 
     @if (category() === 'SKIN') {
       <div class="card">
-        <fieldset [disabled]="submitting()">
+        <fieldset [disabled]="submitting() || routineSaving()">
           <legend>Frequência do cuidado</legend>
           <div class="new-care-options">
             <label>
@@ -163,52 +82,108 @@
         </fieldset>
       </div>
     }
+  </div>
 
-    @if (isRecurring) {
-      <section class="card new-care-details" aria-labelledby="care-recurrence-title">
-        <h2 id="care-recurrence-title">Monte sua rotina</h2>
+  @if (category() === 'SKIN' && recurring()) {
+    <app-skin-routine [today]="today()" (savingChange)="routineSaving.set($event)" />
+  } @else {
+    <form novalidate (submit)="$event.preventDefault(); save()" [attr.aria-busy]="submitting()">
+      @let fields = categories[category()];
+      <div class="card field">
+        <label for="care-date"><span class="material-symbol" aria-hidden="true">event_available</span> {{ direct() ? 'Data de realização' : 'Data planejada' }} <span aria-hidden="true">*</span></label>
+        <input #careDate id="care-date" [name]="direct() ? 'completedOn' : 'plannedDate'" type="date" required
+               [min]="direct() ? '0001-01-01' : today()" [max]="direct() ? today() : '9999-12-31'"
+               [value]="(direct() ? completedOn() : plannedDate()) ?? today()" [readOnly]="submitting()"
+               [attr.aria-invalid]="errors().date ? 'true' : null"
+               [attr.aria-describedby]="errors().date ? 'care-date-hint care-date-error' : 'care-date-hint'"
+               (input)="updateDate(careDate.value)">
+        <p id="care-date-hint" class="hint">{{ direct() ? 'Escolha hoje ou uma data passada.' : 'Escolha hoje ou uma data futura.' }}</p>
+        @if (errors().date; as message) {
+          <p id="care-date-error" class="field-error" role="alert">{{ message }}</p>
+        }
+      </div>
+
+      <div class="card new-care-details">
         <div class="field">
-          <label for="care-weeks">Duração em semanas <span aria-hidden="true">*</span></label>
-          <input #weeks id="care-weeks" name="weeks" type="number" min="1" max="12" step="1" required
-                 [value]="duration()" [readOnly]="submitting()"
-                 [attr.aria-invalid]="errors().weeks ? 'true' : null"
-                 [attr.aria-describedby]="errors().weeks ? 'care-weeks-hint care-weeks-error' : 'care-weeks-hint'"
-                 (input)="duration.set(weeks.value); clearField('weeks')">
-          <p id="care-weeks-hint" class="hint">De 1 a 12 semanas.</p>
-          @if (errors().weeks; as message) {
-            <p id="care-weeks-error" class="field-error" role="alert">{{ message }}</p>
+          <label for="care-title">{{ fields.title }} <span aria-hidden="true">*</span></label>
+          <input #title id="care-title" name="title" type="text" required [placeholder]="fields.placeholder"
+                 [value]="titles()[category()]"
+                 [readOnly]="submitting()" [attr.aria-invalid]="errors().title ? 'true' : null"
+                 [attr.aria-describedby]="errors().title ? 'care-title-error' : null" (input)="updateTitle(title.value)">
+          @if (errors().title; as message) {
+            <p id="care-title-error" class="field-error" role="alert">{{ message }}</p>
           }
         </div>
-        <fieldset #weekdayFields [disabled]="submitting()" aria-describedby="care-weekdays-hint">
-          <legend>Dias da semana</legend>
-          <div class="weekdays">
-            @for (day of weekdays; track day.value; let first = $first) {
-              <button class="day" type="button" [attr.aria-label]="day.label"
-                      [attr.aria-describedby]="first && errors().weekdays ? 'care-weekdays-error' : null"
-                      [attr.aria-pressed]="selectedDays().includes(day.value)" (click)="toggleDay(day.value)">
-                <span>{{ day.short }}</span>
-                <span class="day-check" aria-hidden="true">✓</span>
-              </button>
+
+        @if (category() === 'SKIN') {
+          <fieldset [disabled]="submitting()" [attr.aria-describedby]="errors().period ? 'care-period-error' : null">
+            <legend>Período <span class="hint">(opcional)</span></legend>
+            <div class="new-care-options">
+              <label>
+                <input #firstPeriod type="radio" name="period" value="" [checked]="period() === ''" (change)="choosePeriod('')">
+                <span>Sem período</span>
+              </label>
+              <label>
+                <input type="radio" name="period" value="MORNING" [checked]="period() === 'MORNING'" (change)="choosePeriod('MORNING')">
+                <span>Manhã</span>
+              </label>
+              <label>
+                <input type="radio" name="period" value="NIGHT" [checked]="period() === 'NIGHT'" (change)="choosePeriod('NIGHT')">
+                <span>Noite</span>
+              </label>
+            </div>
+            @if (errors().period; as message) {
+              <p id="care-period-error" class="field-error" role="alert">{{ message }}</p>
+            }
+          </fieldset>
+        } @else if (category() === 'MAKEUP') {
+          <div class="field">
+            <label for="care-note">Notas sobre produtos e visual <span class="hint">(opcional)</span></label>
+            <textarea #note id="care-note" name="note" rows="3" placeholder="Ex.: Blush líquido e máscara marrom"
+                      [value]="this.note()" [readOnly]="submitting()" [attr.aria-invalid]="errors().note ? 'true' : null"
+                      [attr.aria-describedby]="errors().note ? 'care-note-error' : null"
+                      (input)="this.note.set(note.value); clearField('note')"></textarea>
+            @if (errors().note; as message) {
+              <p id="care-note-error" class="field-error" role="alert">{{ message }}</p>
             }
           </div>
-          <p id="care-weekdays-hint" class="hint weekday-hint">Selecione pelo menos um dia.</p>
-          @if (errors().weekdays; as message) {
-            <p id="care-weekdays-error" class="field-error">{{ message }}</p>
-          }
-        </fieldset>
-      </section>
-    }
+        } @else {
+          <div class="new-care-nail-fields">
+            <div class="field">
+              <label for="care-color">Cor <span class="hint">(opcional)</span></label>
+              <input #polishColor id="care-color" name="polishColor" type="text" placeholder="Ex.: Lavanda"
+                     [value]="this.polishColor()" [readOnly]="submitting()" [attr.aria-invalid]="errors().polishColor ? 'true' : null"
+                     [attr.aria-describedby]="errors().polishColor ? 'care-color-error' : null"
+                     (input)="this.polishColor.set(polishColor.value); clearField('polishColor')">
+              @if (errors().polishColor; as message) {
+                <p id="care-color-error" class="field-error" role="alert">{{ message }}</p>
+              }
+            </div>
+            <div class="field">
+              <label for="care-product">Produto ou esmalte <span class="hint">(opcional)</span></label>
+              <input #polishProduct id="care-product" name="polishProduct" type="text" placeholder="Ex.: Base fortificante"
+                     [value]="this.polishProduct()" [readOnly]="submitting()" [attr.aria-invalid]="errors().polishProduct ? 'true' : null"
+                     [attr.aria-describedby]="errors().polishProduct ? 'care-product-error' : null"
+                     (input)="this.polishProduct.set(polishProduct.value); clearField('polishProduct')">
+              @if (errors().polishProduct; as message) {
+                <p id="care-product-error" class="field-error" role="alert">{{ message }}</p>
+              }
+            </div>
+          </div>
+        }
+      </div>
 
-    <aside class="info-strip mindful-note">
-      <span class="material-symbol" aria-hidden="true">favorite</span>
-      <p>Cuide de você no seu ritmo, sem pressa e sem cobrança.</p>
-    </aside>
-    @if (error(); as message) {
-      <p class="field-error" role="alert">{{ message }}</p>
-    }
-    <button class="primary new-care-save" type="submit" [attr.aria-disabled]="submitting()">
-      <span class="material-symbol" aria-hidden="true">bookmark_add</span>
-      {{ submitting() ? 'Salvando…' : direct() ? 'Salvar no histórico' : isRecurring ? 'Salvar rotina' : 'Salvar cuidado' }}
-    </button>
-  </form>
+      <aside class="info-strip mindful-note">
+        <span class="material-symbol" aria-hidden="true">favorite</span>
+        <p>Cuide de você no seu ritmo, sem pressa e sem cobrança.</p>
+      </aside>
+      @if (error(); as message) {
+        <p class="field-error" role="alert">{{ message }}</p>
+      }
+      <button class="primary new-care-save" type="submit" [attr.aria-disabled]="submitting()">
+        <span class="material-symbol" aria-hidden="true">bookmark_add</span>
+        {{ submitting() ? 'Salvando…' : direct() ? 'Salvar no histórico' : 'Salvar cuidado' }}
+      </button>
+    </form>
+  }
 </div>

@@ -29,7 +29,7 @@ class CredentialOperations {
     boolean enroll(AccountPrincipal account, String email, Enrollment enrollment, String code, String previousRecovery) {
         var row = store.lock(account.accountId()).orElse(null);
         if (row == null || row.version() != account.credentialVersion()
-                || (row.email() != null && !row.email().equals(email))
+                || row.email() == null || !row.email().equals(email)
                 || (row.enrolled() && !AuthSecrets.matchesDigest(previousRecovery, row.recoveryDigest()))) {
             return false;
         }

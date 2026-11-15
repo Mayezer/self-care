@@ -3,6 +3,8 @@ package br.com.autocuidado.persistence;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,15 +29,17 @@ public class AgendaService {
     private static final LocalDate MIN_DATE = LocalDate.of(1, 1, 1);
     private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);
     private static final String AGENDA_VISIBILITY = """
-              AND (o.status <> PLANNED OR NOT EXISTS (
+              AND (o.status <> PLANNED OR (NOT o.cleaningCanceled AND NOT EXISTS (
                    SELECT 1 FROM RecurringPlan closedPlan
-                   WHERE closedPlan.id = o.planId AND closedPlan.closedOn <= o.plannedDate))
+                   WHERE closedPlan.id = o.planId AND closedPlan.closedOn <= o.plannedDate)))
             """;
     private static final String VISIBLE_OCCURRENCES = """
             SELECT o.id, o.title, o.category, o.plannedDate, o.hairStage,
                    COALESCE(o.period, p.period), o.status, o.completedOn, o.skippedOn,
-                   CASE WHEN o.status = PLANNED AND p.closedOn IS NULL THEN true ELSE false END, o.planId,
-                   o.note, o.polishColor, o.polishProduct
+                   CASE WHEN o.status = PLANNED AND p.closedOn IS NULL AND o.cleaningSeriesId IS NULL
+                        THEN true ELSE false END, o.planId,
+                   o.note, o.polishColor, o.polishProduct, p.skinSteps,
+                   CASE WHEN o.cleaningSeriesId IS NOT NULL THEN true ELSE false END
             FROM CareOccurrence o LEFT JOIN RecurringPlan p ON p.id = o.planId
             WHERE o.accountId = :accountId AND o.plannedDate IS NOT NULL
             """ + AGENDA_VISIBILITY;
@@ -121,6 +125,50 @@ public class AgendaService {
 
         var dates = generator.generate(startDate, weeks, weekdays, timeZones.current(accountId));
         var plan = RecurringPlan.skin(accountId, startDate, weeks, weekdays, title, period, requestId, requestHash);
+        return persistSkinPlan(accountId, title, dates, plan);
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public List<Long> scheduleSkinRoutine(AccountPrincipal account, UUID requestId, LocalDate startDate, int weeks,
+                                          List<SkinRoutinePeriod> periods) {
+        long accountId = account.accountId();
+        var ordered = periods.stream().sorted(Comparator.comparing(SkinRoutinePeriod::period)).toList();
+        var canonical = new StringBuilder("SKIN_ROUTINE|").append(startDate).append('|').append(weeks);
+        for (var part : ordered) {
+            canonical.append('|').append(part.period()).append(part.weekdays().stream().sorted().toList())
+                    .append('|').append(part.title().length()).append(':').append(part.title());
+            for (String step : part.steps()) {
+                canonical.append('|').append(step.length()).append(':').append(step);
+            }
+        }
+        String requestHash = PlanCreation.hash(canonical.toString());
+        var previous = PlanCreation.findRetry(entityManager, accountId, requestId, requestHash);
+        if (previous != null) {
+            return entityManager.createQuery("""
+                    SELECT p.id FROM RecurringPlan p WHERE p.accountId = :accountId
+                    AND (p.id = :anchor OR p.routineRequestPlanId = :anchor) ORDER BY p.id
+                    """, Long.class)
+                    .setParameter("accountId", accountId)
+                    .setParameter("anchor", previous.id())
+                    .getResultList();
+        }
+
+        var zone = timeZones.current(accountId);
+        var schedules = ordered.stream()
+                .map(part -> generator.generate(startDate, weeks, part.weekdays(), zone)).toList();
+        var planIds = new ArrayList<Long>(ordered.size());
+        for (int index = 0; index < ordered.size(); index++) {
+            var part = ordered.get(index);
+            var title = part.title();
+            Long anchor = planIds.isEmpty() ? null : planIds.getFirst();
+            var plan = RecurringPlan.skinRoutine(accountId, startDate, weeks, part.weekdays(), title, part.period(),
+                    part.steps(), anchor == null ? requestId : null, anchor == null ? requestHash : null, anchor);
+            planIds.add(persistSkinPlan(accountId, title, schedules.get(index), plan));
+        }
+        return List.copyOf(planIds);
+    }
+
+    private long persistSkinPlan(long accountId, String title, List<LocalDate> dates, RecurringPlan plan) {
         entityManager.persist(plan);
         for (LocalDate date : dates) {
             entityManager.persist(new CareOccurrence(accountId, plan.id(), CareCategory.SKIN, title, date, null));
@@ -211,7 +259,7 @@ public class AgendaService {
                 SELECT o.id, o.title, o.category, o.hairStage, COALESCE(o.period, p.period),
                        o.status, COALESCE(o.completedOn, o.skippedOn),
                        CASE WHEN o.plannedDate IS NOT NULL THEN true ELSE false END,
-                       o.note, o.polishColor, o.polishProduct
+                       o.note, o.polishColor, o.polishProduct, p.skinSteps
                 FROM CareOccurrence o LEFT JOIN RecurringPlan p ON p.id = o.planId
                 WHERE o.accountId = :accountId AND o.status IN (COMPLETED, SKIPPED)
                 ORDER BY COALESCE(o.completedOn, o.skippedOn) DESC, o.id DESC
@@ -251,12 +299,15 @@ public class AgendaService {
         }
         var target = action == Action.COMPLETE ? OccurrenceStatus.COMPLETED : OccurrenceStatus.SKIPPED;
         if (status == target) {
-            return ActionResult.APPLIED;
+            return ActionResult.UNCHANGED;
         }
         if (status != OccurrenceStatus.PLANNED) {
             return ActionResult.CONFLICT;
         }
         if (action == Action.COMPLETE) {
+            if (occurrence.plannedDate().isAfter(today)) {
+                return ActionResult.FUTURE_PLANNED_DATE;
+            }
             occurrence.complete(completedOn);
         } else {
             occurrence.skip(today);
@@ -274,7 +325,7 @@ public class AgendaService {
         if (occurrence == null) {
             return RescheduleResult.NOT_FOUND;
         }
-        if (occurrence.status() != OccurrenceStatus.PLANNED) {
+        if (occurrence.status() != OccurrenceStatus.PLANNED || occurrence.isSeriesCleaning()) {
             return RescheduleResult.CONFLICT;
         }
         if (plannedDate.isBefore(today(account))) {
@@ -330,25 +381,29 @@ public class AgendaService {
 
     public enum Action { COMPLETE, SKIP, UNDO }
 
-    public enum ActionResult { APPLIED, NOT_FOUND, CONFLICT, INVALID_COMPLETION_DATE }
+    public enum ActionResult { APPLIED, UNCHANGED, NOT_FOUND, CONFLICT, INVALID_COMPLETION_DATE, FUTURE_PLANNED_DATE }
 
     public enum RescheduleResult { APPLIED, NOT_FOUND, CONFLICT, PAST_DATE, OCCUPIED_DATE }
+
+    public record SkinRoutinePeriod(CarePeriod period, String title, Set<DayOfWeek> weekdays, List<String> steps) {}
 
     public record Item(Long id, String title, CareCategory category, LocalDate date, HairStage stage,
                        CarePeriod period, OccurrenceStatus status, LocalDate completedOn, LocalDate skippedOn,
                        boolean canReschedule, Long planId, String note, String polishColor, String polishProduct,
-                       String reminderTime) {
+                       String[] skinSteps, boolean cleaningSeries, String reminderTime) {
         public Item(Long id, String title, CareCategory category, LocalDate date, HairStage stage,
                     CarePeriod period, OccurrenceStatus status, LocalDate completedOn, LocalDate skippedOn,
-                    boolean canReschedule, Long planId, String note, String polishColor, String polishProduct) {
+                    boolean canReschedule, Long planId, String note, String polishColor, String polishProduct,
+                    String[] skinSteps, boolean cleaningSeries) {
             this(id, title, category, date, stage, period, status, completedOn, skippedOn, canReschedule, planId,
-                    note, polishColor, polishProduct, null);
+                    note, polishColor, polishProduct, skinSteps, cleaningSeries, null);
         }
 
         Item withReminder(AgendaReminderService.Preferences preferences) {
             if (status != OccurrenceStatus.PLANNED || !preferences.categories().contains(category)) return this;
             return new Item(id, title, category, date, stage, period, status, completedOn, skippedOn,
-                    canReschedule, planId, note, polishColor, polishProduct, preferences.time().toString());
+                    canReschedule, planId, note, polishColor, polishProduct, skinSteps, cleaningSeries,
+                    preferences.time().toString());
         }
     }
 
@@ -358,5 +413,5 @@ public class AgendaService {
 
     public record HistoryItem(Long id, String title, CareCategory category, HairStage stage, CarePeriod period,
                               OccurrenceStatus status, LocalDate actionDate, boolean canUndo,
-                              String note, String polishColor, String polishProduct) {}
+                              String note, String polishColor, String polishProduct, String[] skinSteps) {}
 }

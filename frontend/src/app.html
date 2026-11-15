@@ -1,19 +1,45 @@
 <div class="page-width page-content hair-page">
+  <header appPageHeading="spa">
+    <p class="eyebrow">Seu ritual de cuidados</p>
+    <h1 #heading tabindex="-1">Cronograma capilar</h1>
+    <p>Monte seu ciclo de cuidados. Escolha a frequência, confira as etapas na prévia e salve na sua agenda.</p>
+  </header>
   <div class="planner">
     <div class="planner-setup">
-      <header class="editorial-banner hair-intro">
-        <span class="editorial-icon material-symbol" aria-hidden="true">auto_awesome</span>
-        <div>
-          <h1 #heading tabindex="-1">Cronograma capilar</h1>
-          <p>Monte seu ciclo de cuidados. Escolha a frequência, confira as etapas na prévia e salve na sua agenda.</p>
-        </div>
-      </header>
       <section class="card frequency-card" aria-labelledby="schedule-title">
         <div class="section-heading">
           <h2 id="schedule-title"><span class="material-symbol" aria-hidden="true">tune</span> Frequência e duração</h2>
-          <span class="pill status-completed">Ciclo guiado</span>
         </div>
-        <form novalidate (submit)="$event.preventDefault(); generatePreview()">
+        <form novalidate (submit)="$event.preventDefault(); generatePreview(replaceSuggestion)">
+          <fieldset [disabled]="saving()">
+            <legend>Como você quer montar o cronograma?</legend>
+            <div class="new-care-options segmented-options">
+              <label><input type="radio" name="planner-mode" [checked]="!suggested()" (change)="changeMode(false)"> Montar manualmente</label>
+              <label><input type="radio" name="planner-mode" [checked]="suggested()" (change)="changeMode(true)"> Receber sugestão</label>
+            </div>
+          </fieldset>
+
+          @if (suggested()) {
+            <div class="field">
+              <label for="hair-goal">Objetivo <span class="hint">(opcional)</span></label>
+              <select #goalInput id="hair-goal" [disabled]="saving()" (change)="changeGoal(goalInput.value)">
+                <option value="" [selected]="!goal()">Sem objetivo definido</option>
+                <option value="ORGANIZE" [selected]="goal() === 'ORGANIZE'">Organizar as lavagens</option>
+                @for (stage of treatmentStages; track stage.value) {
+                  <option [value]="stage.value" [selected]="goal() === stage.value">Incluir {{ stage.label.toLowerCase() }}</option>
+                }
+              </select>
+              <label class="planner-profile-choice">
+                <input #useProfileInput type="checkbox" [checked]="useProfile()" [disabled]="saving()"
+                       aria-describedby="planner-profile-hint" (change)="changeUseProfile(useProfileInput.checked)">
+                Usar as respostas salvas em Meu cabelo
+              </label>
+              <p class="hint" id="planner-profile-hint">As respostas da sua conta são usadas quando você deixa o objetivo em branco.
+                <a class="agenda-add" href="/meu-cabelo" target="_blank" rel="noopener">Revisar Meu cabelo (nova aba)</a>
+              </p>
+            </div>
+          }
+
           <div class="field">
             <label for="start-date">Data de início</label>
             <div class="field-with-icon">
@@ -82,7 +108,7 @@
 
       <p class="info-strip">
         <span class="material-symbol" aria-hidden="true">info</span>
-        Ao alterar os dias da semana, as etapas das datas mantidas serão preservadas.
+        Ao ajustar as datas, as edições das sessões mantidas são preservadas.
       </p>
     </div>
 
@@ -115,6 +141,11 @@
           As datas vão aparecer aqui depois que você gerar a prévia.
         }
       </p>
+      <div class="planner-suggestion-status" role="status">
+        @if (!loading() && !outdated() && suggestionReason(); as reason) {
+          <p class="card hint">{{ reason }}</p>
+        }
+      </div>
 
       @if (occurrences().length) {
         <ol class="sessions hair-sessions" role="list">
@@ -129,7 +160,7 @@
               </div>
               <div class="field">
                 <label class="hint" [id]="'stage-label-' + occurrence.date" [for]="'stage-' + occurrence.date">Etapa da sessão</label>
-                <select #stageInput [id]="'stage-' + occurrence.date" [disabled]="saving()"
+                <select #stageInput [id]="'stage-' + occurrence.date" [disabled]="loading() || saving()"
                         [attr.aria-labelledby]="'stage-label-' + occurrence.date + ' stage-date-' + occurrence.date"
                         (change)="changeStage(occurrence.date, stageInput.value)">
                   @for (stage of stages; track stage.value) {
@@ -147,28 +178,29 @@
         <div class="card planner-save">
           @if (resuming) {
             <p class="hint" role="status">Prévia retomada. Confira as datas e etapas.</p>
-            <button class="primary preview-action" type="button" (click)="savePlan()"
-                    [attr.aria-disabled]="saving() ? 'true' : null">
-              <span class="material-symbol" aria-hidden="true">bookmark_add</span>
-              {{ saving() ? 'Salvando cronograma…' : 'Salvar cronograma' }}
-            </button>
-            @if (saveError(); as error) {
-              <p class="field-error" role="alert">{{ error }}</p>
-            }
-          } @else {
-            <div class="planner-save-info">
-              <p class="hint"><span class="material-symbol" aria-hidden="true">schedule</span>{{ timeZone }}</p>
-              <p class="pill status-completed">Prévia ativa</p>
-            </div>
-            <button class="primary preview-action" type="button" (click)="continueWithAccount()">
-              <span class="material-symbol" aria-hidden="true">bookmark_add</span>
-              Entrar para salvar na agenda
-            </button>
+          }
+          <button class="primary preview-action" type="button" (click)="savePlan()"
+                  [attr.aria-disabled]="saving() ? 'true' : null">
+            <span class="material-symbol" aria-hidden="true">bookmark_add</span>
+            {{ saving() ? 'Salvando cronograma…' : 'Salvar cronograma' }}
+          </button>
+          @if (saveError(); as error) {
+            <p class="field-error" role="alert">{{ error }}</p>
           }
         </div>
       }
     </section>
   </div>
+
+  <dialog #replaceSuggestion class="card planner-confirm" aria-labelledby="replace-suggestion-title"
+          aria-describedby="replace-suggestion-description" (cancel)="keepEdits()">
+    <h2 id="replace-suggestion-title">Gerar nova sugestão?</h2>
+    <p id="replace-suggestion-description">A nova sugestão vai substituir as etapas que você editou.</p>
+    <div class="planner-confirm-actions">
+      <button class="secondary" type="button" autofocus (click)="keepEdits(); replaceSuggestion.close()">Manter edições</button>
+      <button class="primary" type="button" (click)="replaceSuggestion.close(); requestPreview(true)">Substituir etapas</button>
+    </div>
+  </dialog>
 
   <footer class="connection" [class.visually-hidden]="connectionMessage() !== 'API indisponível.'" role="status">{{ connectionMessage() }}</footer>
 </div>

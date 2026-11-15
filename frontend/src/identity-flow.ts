@@ -5,7 +5,6 @@ import { postWithCsrf } from './csrf';
 
 export interface LoginStep {
   mfa: 'verify' | 'enroll-email';
-  needsEmail: boolean;
 }
 
 type Step = LoginStep['mfa'] | 'enroll-confirm' | 'activate' | 'recover' | 'reset' | 'reset-complete'
@@ -23,15 +22,8 @@ interface Setup {
     @switch (step()) {
       @case ('enroll-email') {
         <h2 #heading tabindex="-1">Configure a verificação em duas etapas</h2>
-        <p>Confirme seu e-mail para configurar um aplicativo autenticador.</p>
+        <p>Enviaremos um código ao e-mail da sua conta para você configurar o autenticador.</p>
         <form method="post" (submit)="$event.preventDefault(); sendEnrollmentEmail()">
-          @if (needsEmail()) {
-            <div class="field">
-              <label for="identity-enrollment-email">E-mail de recuperação</label>
-              <input id="identity-enrollment-email" type="email" autocomplete="email" required maxlength="254"
-                     [value]="email()" (input)="updateEmail($event)">
-            </div>
-          }
           <button class="primary" type="submit" [disabled]="pending()">Enviar código</button>
         </form>
       }
@@ -151,7 +143,6 @@ export class IdentityFlow {
   private readonly injector = inject(Injector);
   private readonly heading = viewChild<ElementRef<HTMLHeadingElement>>('heading');
   readonly initial = input.required<LoginStep['mfa'] | 'reset'>();
-  readonly needsEmail = input(false);
   readonly cancelled = output<void>();
   readonly authenticated = output<void>();
   readonly resetDone = output<void>();
@@ -176,7 +167,7 @@ export class IdentityFlow {
   }
 
   protected sendEnrollmentEmail(): void {
-    this.post<void>('mfa/email', { email: this.email() }, () => this.move('enroll-confirm'));
+    this.post<void>('mfa/email', {}, () => this.move('enroll-confirm'));
   }
 
   protected confirmEnrollmentEmail(code: string): void {

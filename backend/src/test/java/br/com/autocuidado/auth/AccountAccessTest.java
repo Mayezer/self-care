@@ -14,6 +14,7 @@ import br.com.autocuidado.hair.HairPlanController;
 import br.com.autocuidado.persistence.AccountRepository;
 import br.com.autocuidado.persistence.AgendaReminderService;
 import br.com.autocuidado.persistence.HairPlanService;
+import br.com.autocuidado.persistence.HairProfileStore;
 import com.jayway.jsonpath.JsonPath;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -53,7 +54,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = {AccountController.class, AccountSessionsController.class, HairPlanController.class},
+@WebMvcTest(controllers = {AccountController.class, AccountSessionsController.class, AdminAccessController.class,
+        HairPlanController.class},
         properties = {"app.auth.email.from=agenda@example.test", "app.auth.mfa-required=false",
                 "app.auth.password-exposure-check=false"})
 @ImportAutoConfiguration(ServletWebSecurityAutoConfiguration.class)
@@ -82,6 +84,9 @@ class AccountAccessTest {
     private HairPlanService plans;
 
     @MockitoBean
+    private HairProfileStore profiles;
+
+    @MockitoBean
     private AgendaReminderService reminders;
 
     @MockitoBean
@@ -94,6 +99,19 @@ class AccountAccessTest {
     void allowLoginAttempts() {
         clock.now = TEST_TIME;
         when(loginRateLimit.tryAcquire(anyString())).thenReturn(true);
+    }
+
+    @Test
+    void ordinarySessionsCannotEnterTheAdminNamespaceAndOwnersCannotSkipMfa() throws Exception {
+        givenConfirmedAccount(TIME_ZONE);
+        mvc.perform(get("/api/admin/access")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/admin/access").session(signedIn(EMAIL))).andExpect(status().isForbidden());
+
+        var owner = accounts.loginByEmail(EMAIL).orElseThrow();
+        when(owner.getOwner()).thenReturn(true);
+        var session = new MockHttpSession();
+        login(session, csrf(session), PASSWORD).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/admin/access").session(session)).andExpect(status().isUnauthorized());
     }
 
     @Test

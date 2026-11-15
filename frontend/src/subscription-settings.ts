@@ -1,5 +1,5 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, DOCUMENT, inject, output, signal } from '@angular/core';
+import { Component, DestroyRef, DOCUMENT, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { postWithCsrf } from './csrf';
@@ -29,6 +29,8 @@ export class SubscriptionSettings {
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
   private readonly document = inject(DOCUMENT);
+  readonly forumAvailable = input(false);
+  readonly hairDiaryAvailable = input(false);
   readonly sessionExpired = output();
   protected readonly state = signal<SubscriptionState | null>(null);
   protected readonly pending = signal(false);

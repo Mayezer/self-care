@@ -1,3 +1,4 @@
+import { PageHeading } from './page-heading';
 import { isPlatformBrowser, Location } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, PLATFORM_ID, signal, viewChild } from '@angular/core';
@@ -6,10 +7,15 @@ import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { postWithCsrf } from './csrf';
 import { formatHairDate, readHairPreviewDraft, STAGES, WEEKDAYS } from './hair-preview-draft';
-import type { HairPlanRequest, HairPreviewDraft, PreviewOccurrence, Stage, Weekday } from './hair-preview-draft';
+import type { HairGoal, HairPlanRequest, HairPreviewDraft, HairPreviewState, HairSuggestionOptions, PreviewOccurrence, Stage, Weekday } from './hair-preview-draft';
 
-type PreviewField = 'startDate' | 'weeks' | 'weekdays';
+type PreviewField = 'startDate' | 'weeks' | 'weekdays' | 'suggestion';
 type FieldErrors = Partial<Record<PreviewField | 'timeZone' | 'body' | 'occurrences' | 'requestId', string>>;
+
+interface PreviewResponse {
+  occurrences: PreviewOccurrence[];
+  suggestion?: { reason: string };
+}
 
 interface Occurrence extends PreviewOccurrence {
   label: string;
@@ -44,6 +50,7 @@ function localToday(): string {
 }
 
 @Component({
+  imports: [PageHeading],
   selector: 'app-planner',
   templateUrl: './app.html',
 })
@@ -60,10 +67,20 @@ export class App {
   private readonly weeksInput = viewChild.required<ElementRef<HTMLInputElement>>('weeksInput');
   private readonly weekdayFields = viewChild.required<ElementRef<HTMLFieldSetElement>>('weekdayFields');
   private previewRequest?: Subscription;
-  private lastSave = this.draft && 'requestId' in this.draft ? this.draft : undefined;
+  private lastRequestId = this.draft?.requestId;
+  private lastSavedDraft = this.draft && this.lastRequestId ? JSON.stringify({
+    startDate: this.draft.startDate, weeks: this.draft.weeks,
+    weekdays: this.draft.weekdays, occurrences: this.draft.occurrences,
+  }) : undefined;
+  private previewSuggestion = this.draft?.suggestion;
+  private datesOutdated = this.draft !== undefined;
+  private editedStages = new Map(this.draft?.occurrences
+    .filter(({ date }) => this.draft?.editedDates?.includes(date) ?? true)
+    .map(({ date, stage }) => [date, stage]));
 
   protected readonly weekdays = WEEKDAYS;
   protected readonly stages = STAGES;
+  protected readonly treatmentStages = STAGES.filter(stage => stage.value !== 'WASH_ONLY');
   protected readonly durations = [2, 4, 8, 12];
   protected readonly stageCues = STAGE_CUES;
   protected readonly compactDate = shortSessionDate;
@@ -73,6 +90,10 @@ export class App {
   private readonly previewStart = signal(this.startDate());
   protected readonly weeks = signal<number | null>(this.draft?.weeks ?? 2);
   protected readonly selectedDays = signal<readonly Weekday[]>(this.draft?.weekdays ?? []);
+  protected readonly suggested = signal(this.previewSuggestion !== undefined);
+  protected readonly useProfile = signal(this.previewSuggestion?.useProfile ?? true);
+  protected readonly goal = signal<HairGoal | ''>(this.previewSuggestion?.goal ?? '');
+  protected readonly suggestionReason = signal(this.draft?.suggestionReason ?? '');
   protected readonly occurrences = signal(labelOccurrences(this.draft?.occurrences ?? []));
   protected readonly errors = signal<FieldErrors>({});
   protected readonly requestError = signal('');
@@ -91,7 +112,7 @@ export class App {
       error: () => this.connectionMessage.set('API indisponível.'),
     });
     if (this.resuming) {
-      this.generatePreview();
+      this.requestPreview(false, this.draft);
       afterNextRender(() => this.heading().nativeElement.focus());
     }
   }
@@ -118,36 +139,49 @@ export class App {
   }
 
   protected changeStage(date: string, stage: string): void {
+    this.editedStages.set(date, stage as Stage);
     this.occurrences.update(items => items.map(item => item.date === date
       ? { ...item, stage: stage as Stage }
       : item));
     this.saveError.set('');
   }
 
-  protected continueWithAccount(): void {
-    const draft = this.currentDraft();
-    if (draft) {
-      this.openAccount(draft);
-    }
+  protected changeMode(suggested: boolean): void {
+    this.suggested.set(suggested);
+    this.invalidatePreview('suggestion');
+  }
+
+  protected changeGoal(goal: string): void {
+    this.goal.set(goal as HairGoal | '');
+    this.invalidatePreview('suggestion');
+  }
+
+  protected changeUseProfile(useProfile: boolean): void {
+    this.useProfile.set(useProfile);
+    this.invalidatePreview('suggestion');
   }
 
   protected savePlan(): void {
     const draft = this.currentDraft();
-    if (!draft || !this.resuming) {
+    if (!draft) {
       return;
     }
 
     // Keep the same identifier after a failed response or reload when the choices are unchanged.
-    const previous = this.lastSave;
-    const requestId = previous && JSON.stringify(draft) === JSON.stringify({
-      startDate: previous.startDate, weeks: previous.weeks,
-      weekdays: previous.weekdays, occurrences: previous.occurrences,
-    }) ? previous.requestId : crypto.randomUUID();
+    const savedDraft = JSON.stringify(draft);
+    const requestId = (savedDraft === this.lastSavedDraft && this.lastRequestId) || crypto.randomUUID();
     const request: HairPlanRequest = { ...draft, requestId };
-    this.lastSave = request;
+    const resumeDraft: HairPreviewState = {
+      ...request,
+      suggestion: this.previewSuggestion,
+      suggestionReason: this.suggestionReason(),
+      editedDates: [...this.editedStages.keys()],
+    };
+    this.lastRequestId = requestId;
+    this.lastSavedDraft = savedDraft;
     this.location.replaceState(this.router.url, '', {
       ...this.location.getState() as object,
-      hairPreviewDraft: request,
+      hairPreviewDraft: resumeDraft,
     });
 
     this.saving.set(true);
@@ -161,12 +195,13 @@ export class App {
         error: (error: HttpErrorResponse) => {
           this.saving.set(false);
           if (error.status === 401) {
-            this.openAccount(request);
+            void this.router.navigate(['/agenda'], { state: { hairPreviewDraft: resumeDraft } });
             return;
           }
-          const fields: FieldErrors | undefined = error.status === 400 ? error.error?.errors : undefined;
+          const fields: FieldErrors | undefined = error.status === 400 || error.status === 409 ? error.error?.errors : undefined;
           this.errors.set(fields ?? {});
           if (fields?.startDate || fields?.weeks || fields?.weekdays || fields?.occurrences) {
+            this.datesOutdated = true;
             this.outdated.set(true);
             this.requestError.set(fields.occurrences ??
               'Confira os campos indicados e gere a prévia novamente. Suas escolhas foram mantidas.');
@@ -192,13 +227,36 @@ export class App {
     };
   }
 
-  private openAccount(draft: HairPreviewDraft): void {
-    void this.router.navigate(['/agenda'], {
-      state: { hairPreviewDraft: draft },
-    });
+  protected generatePreview(dialog: HTMLDialogElement): void {
+    if (this.loading() || this.saving()) return;
+
+    const suggestion = this.suggestionOptions();
+    if (this.editedStages.size && suggestion && (this.suggestionChanged(suggestion) || !this.datesOutdated)) {
+      dialog.showModal();
+      return;
+    }
+    this.requestPreview(false);
   }
 
-  protected generatePreview(): void {
+  private suggestionOptions(): HairSuggestionOptions | undefined {
+    const goal = this.goal();
+    return this.suggested() ? { useProfile: this.useProfile(), ...(goal ? { goal } : {}) } : undefined;
+  }
+
+  private suggestionChanged(suggestion: HairSuggestionOptions | undefined): boolean {
+    return suggestion?.goal !== this.previewSuggestion?.goal || suggestion?.useProfile !== this.previewSuggestion?.useProfile;
+  }
+
+  protected keepEdits(): void {
+    this.suggested.set(this.previewSuggestion !== undefined);
+    if (this.previewSuggestion) {
+      this.goal.set(this.previewSuggestion.goal ?? '');
+      this.useProfile.set(this.previewSuggestion.useProfile);
+    }
+    this.outdated.set(this.datesOutdated);
+  }
+
+  protected requestPreview(replaceEdits: boolean, resume?: HairPreviewState): void {
     if (this.loading() || this.saving()) {
       return;
     }
@@ -209,18 +267,26 @@ export class App {
     this.loading.set(true);
 
     const startDate = this.startDate();
-    this.previewRequest = this.http.post<{ occurrences: PreviewOccurrence[] }>('/api/hair-plans/preview', {
+    const options = this.suggestionOptions();
+    this.previewRequest = this.http.post<PreviewResponse>('/api/hair-plans/preview', {
       startDate,
       weeks: this.weeks(),
       weekdays: this.selectedDays(),
       timeZone: this.timeZone,
+      ...(options && !resume ? { suggestion: options } : {}),
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ({ occurrences }) => {
-        const previousStages = new Map(this.occurrences().map(item => [item.date, item.stage]));
+      next: ({ occurrences, suggestion }) => {
+        const dates = new Set(occurrences.map(item => item.date));
+        if (replaceEdits) this.editedStages.clear();
+        this.editedStages = new Map([...this.editedStages].filter(([date]) => dates.has(date)));
+        const stages = resume ? new Map(resume.occurrences.map(({ date, stage }) => [date, stage])) : this.editedStages;
         this.occurrences.set(labelOccurrences(occurrences.map(({ date, stage }) => ({
-          date, stage: previousStages.get(date) ?? stage,
+          date, stage: stages.get(date) ?? stage,
         }))));
+        this.suggestionReason.set(resume?.suggestionReason ?? suggestion?.reason ?? '');
+        this.previewSuggestion = options;
         this.previewStart.set(startDate);
+        this.datesOutdated = false;
         this.outdated.set(false);
         this.loading.set(false);
       },
@@ -228,7 +294,7 @@ export class App {
         const fields: FieldErrors | undefined = error.status === 400 ? error.error?.errors : undefined;
         this.errors.set(fields ?? {});
         this.requestError.set(
-          fields?.timeZone ?? fields?.body ?? (fields
+          fields?.timeZone ?? fields?.body ?? fields?.suggestion ?? (fields
             ? (this.resuming && fields.startDate
               ? 'Ajuste a data de início e gere a prévia novamente. Suas escolhas foram mantidas.'
               : 'Confira os campos indicados e gere a prévia novamente.')
@@ -255,7 +321,10 @@ export class App {
   private invalidatePreview(field: PreviewField): void {
     this.previewRequest?.unsubscribe();
     this.loading.set(false);
-    this.outdated.set(this.occurrences().length > 0);
+    if (this.occurrences().length) {
+      if (field !== 'suggestion') this.datesOutdated = true;
+      this.outdated.set(this.datesOutdated || this.suggestionChanged(this.suggestionOptions()));
+    }
     this.errors.update(errors => ({ ...errors, [field]: undefined }));
     this.requestError.set('');
     this.saveError.set('');

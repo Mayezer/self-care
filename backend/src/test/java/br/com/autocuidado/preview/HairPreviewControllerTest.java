@@ -9,6 +9,7 @@ import br.com.autocuidado.auth.AccountTimeZones;
 import br.com.autocuidado.auth.SecurityConfiguration;
 import br.com.autocuidado.hair.HairPlanController;
 import br.com.autocuidado.persistence.HairPlanService;
+import br.com.autocuidado.persistence.HairProfileStore;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -28,8 +29,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,6 +46,9 @@ class HairPreviewControllerTest {
 
     @MockitoBean
     private HairPlanService plans;
+
+    @MockitoBean
+    private HairProfileStore profiles;
 
     @MockitoBean
     private AccountTimeZones timeZones;
@@ -68,6 +74,40 @@ class HairPreviewControllerTest {
                     .andExpect(content().json(expected, JsonCompareMode.STRICT))
                     .andExpect(result -> assertNull(result.getRequest().getSession(false)));
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"HYDRATION", "NUTRITION", "RECONSTRUCTION"})
+    void schedulesTheChosenStageOnlyOnTheFirstGeneratedDate(String goal) throws Exception {
+        submit(suggest("{\"goal\":\"%s\",\"useProfile\":true}".formatted(goal)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.suggestion.status").value("MODEL_SELECTED"))
+                .andExpect(jsonPath("$.suggestion.version").value(1))
+                .andExpect(jsonPath("$.suggestion.reviewedOn").value("2026-11-13"))
+                .andExpect(jsonPath("$.occurrences.length()").value(4))
+                .andExpect(jsonPath("$.occurrences[0].date").value("2026-11-12"))
+                .andExpect(jsonPath("$.occurrences[0].stage").value(goal))
+                .andExpect(jsonPath("$.occurrences[1].date").value("2026-11-16"))
+                .andExpect(jsonPath("$.occurrences[1].stage").value("WASH_ONLY"))
+                .andExpect(jsonPath("$.occurrences[3].stage").value("WASH_ONLY"));
+        verifyNoInteractions(profiles, plans);
+    }
+
+    @Test
+    void fallsBackToWashingWhenAVisitorHasNoGoal() throws Exception {
+        submit(suggest("{\"useProfile\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.suggestion.status").value("INSUFFICIENT_ANSWERS"))
+                .andExpect(jsonPath("$.occurrences[0].stage").value("WASH_ONLY"));
+        verifyNoInteractions(profiles, plans);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "[]", "{\"goal\":\"INVALID\"}", "{\"useProfile\":\"true\"}", "{\"accountId\":1}"})
+    void rejectsInvalidSuggestionOptions(String options) throws Exception {
+        submit(suggest(options)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.suggestion").isString());
+        verifyNoInteractions(profiles, plans);
     }
 
     @ParameterizedTest
@@ -146,6 +186,13 @@ class HairPreviewControllerTest {
 
     private ResultActions submit(String body) throws Exception {
         return mvc.perform(post("/api/hair-plans/preview").contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    private static String suggest(String options) {
+        return """
+                {"startDate":"2026-11-11","weeks":2,"weekdays":["MONDAY","THURSDAY"],
+                 "timeZone":"America/Sao_Paulo","suggestion":%s}
+                """.formatted(options);
     }
 
     private static String payload(String date, String weeks, String weekdays, String zone) {

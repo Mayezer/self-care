@@ -36,6 +36,7 @@ class AccountController {
     private final boolean hairProductsAvailable;
     private final boolean guidesAvailable;
     private final boolean forumAvailable;
+    private final boolean forumPublicReadingAvailable;
     private final boolean billingAvailable;
     private final boolean hairDiaryAvailable;
     private final boolean registrationEnabled;
@@ -45,6 +46,7 @@ class AccountController {
                       @Value("${app.hair.products-enabled:false}") boolean hairProductsEnabled,
                       @Value("${app.help.guides-enabled:false}") boolean guidesAvailable,
                       @Value("${app.forum.enabled:false}") boolean forumAvailable,
+                      @Value("${app.forum.public-reading-enabled:false}") boolean forumPublicReadingAvailable,
                       @Value("${app.billing.enabled:false}") boolean billingAvailable,
                       @Value("${app.hair.diary-enabled:false}") boolean hairDiaryEnabled,
                       @Value("${app.auth.registration-enabled:true}") boolean registrationEnabled) {
@@ -55,7 +57,8 @@ class AccountController {
         this.hairProfileAvailable = hairProfileAvailable;
         this.hairProductsAvailable = hairProfileAvailable && hairProductsEnabled;
         this.guidesAvailable = guidesAvailable;
-        this.forumAvailable = forumAvailable;
+        this.forumAvailable = forumAvailable && forumPublicReadingAvailable;
+        this.forumPublicReadingAvailable = forumPublicReadingAvailable;
         this.billingAvailable = billingAvailable;
         this.hairDiaryAvailable = billingAvailable && hairDiaryEnabled;
         this.registrationEnabled = registrationEnabled;
@@ -121,12 +124,13 @@ class AccountController {
         return new AgendaAccount(account.email() == null ? account.getUsername() : null,
                 account.email(), zone.getId(), LocalDate.now(clock.withZone(zone)), reminders.available(),
                 hairProfileAvailable, hairProductsAvailable, guidesAvailable, forumAvailable, billingAvailable, hairDiaryAvailable,
-                registrationEnabled);
+                registrationEnabled, forumPublicReadingAvailable);
     }
 
     @GetMapping("/api/help/features")
     ResponseEntity<HelpFeatures> helpFeatures() {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new HelpFeatures(guidesAvailable));
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(new HelpFeatures(guidesAvailable, forumPublicReadingAvailable));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
@@ -176,7 +180,8 @@ class AccountController {
 
     record AgendaAccount(String username, String email, String timeZone, LocalDate today, boolean remindersAvailable,
                          boolean hairProfileAvailable, boolean hairProductsAvailable, boolean guidesAvailable, boolean forumAvailable,
-                         boolean billingAvailable, boolean hairDiaryAvailable, boolean registrationEnabled) {}
+                         boolean billingAvailable, boolean hairDiaryAvailable, boolean registrationEnabled,
+                         boolean forumPublicReadingAvailable) {}
 
-    record HelpFeatures(boolean guidesAvailable) {}
+    record HelpFeatures(boolean guidesAvailable, boolean forumAvailable) {}
 }

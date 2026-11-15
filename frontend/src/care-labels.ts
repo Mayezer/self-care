@@ -13,6 +13,7 @@ export interface CareDetails {
   note: string | null;
   polishColor: string | null;
   polishProduct: string | null;
+  skinSteps?: string[] | null;
 }
 
 export function careDetails(item: CareDetails, includeCategory = true): string {

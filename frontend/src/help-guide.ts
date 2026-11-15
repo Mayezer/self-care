@@ -1,3 +1,4 @@
+import { PageHeading } from './page-heading';
 import { Component, inject } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { CURL_GROUPS } from './curl-patterns';
@@ -5,7 +6,7 @@ import { Guide, GUIDES } from './help-guides';
 
 @Component({
   selector: 'app-help-guide',
-  imports: [RouterLink],
+  imports: [PageHeading, RouterLink],
   templateUrl: './help-guide.html',
   styleUrl: './help-guide.css',
 })

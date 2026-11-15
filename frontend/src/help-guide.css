@@ -1,5 +1,6 @@
 .guide-body > :first-child { margin-top: 0; }
-.guide-body ol { margin-bottom: 0; padding-inline-start: var(--space-lg); color: var(--muted); }
+:is(.guide-body, .guide-tutorials) ol { margin-bottom: 0; padding-inline-start: var(--space-lg); color: var(--muted); }
+.guide-tutorials h3 { margin: 0; }
 .curl-guide-group, .guide-back { margin-top: var(--space-md); }
 .curl-guide-grid {
   display: grid;

@@ -3,6 +3,7 @@ package br.com.autocuidado.persistence;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,6 +18,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "recurring_plans")
@@ -62,6 +65,12 @@ public class RecurringPlan {
     @Column(length = 64)
     private String creationRequestHash;
 
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(columnDefinition = "text[]")
+    private String[] skinSteps;
+
+    private Long routineRequestPlanId;
+
     protected RecurringPlan() {}
 
     RecurringPlan(Long accountId, CareCategory category, LocalDate startDate, int weeks,
@@ -88,6 +97,15 @@ public class RecurringPlan {
     static RecurringPlan skin(long accountId, LocalDate startDate, int weeks, Set<DayOfWeek> weekdays,
                               String title, CarePeriod period, UUID requestId, String requestHash) {
         return create(accountId, CareCategory.SKIN, startDate, weeks, weekdays, title, period, requestId, requestHash);
+    }
+
+    static RecurringPlan skinRoutine(long accountId, LocalDate startDate, int weeks, Set<DayOfWeek> weekdays,
+                                     String title, CarePeriod period, List<String> steps, UUID requestId,
+                                     String requestHash, Long routineRequestPlanId) {
+        var plan = skin(accountId, startDate, weeks, weekdays, title, period, requestId, requestHash);
+        plan.skinSteps = steps.toArray(String[]::new);
+        plan.routineRequestPlanId = routineRequestPlanId;
+        return plan;
     }
 
     private static RecurringPlan create(long accountId, CareCategory category, LocalDate startDate, int weeks,

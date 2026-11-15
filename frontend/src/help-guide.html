@@ -1,16 +1,33 @@
 <article class="page-width page-content help">
-  <header class="intro">
+  <header appPageHeading="help">
     <p class="eyebrow">Guias e FAQs</p>
     <h1 tabindex="-1">{{ guide.title }}</h1>
     <p>{{ guide.summary }}</p>
   </header>
 
   <div class="help-topics">
+    @if (guide.tutorials; as tutorials) {
+      <section class="card guide-tutorials" aria-labelledby="guide-tutorials">
+        <h2 id="guide-tutorials">Tutoriais para iniciantes</h2>
+        <ol>
+          @for (tutorial of tutorials; track tutorial.video.url) {
+            <li>
+              <h3>{{ tutorial.title }}</h3>
+              <p>{{ tutorial.objective }}</p>
+              <a class="agenda-add" [href]="tutorial.video.url">{{ tutorial.video.title }}</a>
+            </li>
+          }
+        </ol>
+      </section>
+    }
     <div class="card guide-body">
       @for (paragraph of guide.paragraphs; track paragraph) {
         <p>{{ paragraph }}</p>
       }
       @if (guide.steps; as steps) {
+        @if (guide.stepsTitle; as title) {
+          <h2>{{ title }}</h2>
+        }
         <ol>
           @for (step of steps; track step) {
             <li>{{ step }}</li>

@@ -4,9 +4,11 @@ Agenda de autocuidado is a web app for planning and tracking hair care, skin car
 
 Preview a hair care schedule without an account. Sign in to save sessions to your planner, log completed care, and view your history. The app also offers a hair profile, guides, and planner reminders.
 
-The web interface uses Angular and Nginx in `frontend/`. The API uses Spring Boot and Flyway in `backend/`, with PostgreSQL 18.6. Docker Compose serves the web interface and the API from the same origin.
+The web interface uses Angular and Nginx in `frontend/`. The API uses Spring Boot and Flyway in `backend/`, with PostgreSQL 18.7. Docker Compose serves the web interface and the API from the same origin.
 
 The app is in pre-release. Products, Web Push, billing, the hair care journal, and the forum are disabled by default in the local environment.
+
+To review the forum in a dedicated local Compose project, set `LOCAL_FORUM_PUBLIC_READING_ENABLED=true` and open `/forum`. The public list, search and direct links show approved content only. Set `LOCAL_FORUM_ENABLED=true` as well to enable participation for accounts with a current subscription confirmed by the server. Subscribers can submit one topic per day in the America/Sao_Paulo time zone. Comments have a separate rate limit. Both enter moderation before they appear publicly. Keep both settings off on the release candidate until reading, participation and the billing integration have passed acceptance.
 
 ## Run locally with Docker Compose
 
@@ -24,7 +26,7 @@ To check persistence, generate a preview, verify a test account through Mailpit,
 
 ## Local development
 
-Use JDK 25.0.4.1 and Node.js 22.23.1, as specified in `.java-version` and `.nvmrc`. The backend uses the Gradle Wrapper. The frontend uses npm with dependency versions locked in `package-lock.json`.
+Use JDK 25.0.4.1 and Node.js 22.23.5, as specified in `.java-version` and `.nvmrc`. The backend uses the Gradle Wrapper. The frontend uses npm with dependency versions locked in `package-lock.json`.
 
 Create a local PostgreSQL database and make the application user its owner, with permission to create tables in the `public` schema. At startup, Flyway applies migrations from `backend/src/main/resources/db/migration/` and Hibernate validates the mappings.
 
@@ -54,7 +56,7 @@ Open the [local app](http://127.0.0.1:4200/). The home screen requests `/api/hea
 
 ## Create a test account and sign in
 
-To send verification, authenticator setup, and recovery codes, set `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, and `APP_AUTH_EMAIL_FROM` before starting the backend. When running the API directly, use `APP_AUTH_MFA_KEY` for the hex-encoded 32-byte key. In development, use a local SMTP server that captures outgoing mail. The `publicacao` profile configures TLS and authentication for an external provider. Keep credentials outside the repository.
+To send verification, authenticator setup, and recovery codes, set `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, and `APP_AUTH_EMAIL_FROM` before starting the backend. When running the API directly, use `APP_AUTH_MFA_KEY` for the hex-encoded 32-byte key. In development, use a local SMTP server that captures outgoing mail. The `publicacao` profile configures STARTTLS and authentication. Activate `publicacao,cloudflare-mail` to use Cloudflare Email Sending over implicit TLS with a verified sender and `SPRING_MAIL_PASSWORD` provided by the secret store. Keep credentials outside the repository.
 
 1. In the planner (**Agenda**), select **Quero criar uma conta** (Create an account), enter a test email address, and request a code. Copy the code from Mailpit and choose a password between 15 and 128 characters long. The API needs access to the Pwned Passwords service to check for compromised passwords.
 2. Sign in with your email and password. On your first sign-in, verify your email with the new code from Mailpit and add the setup key to a time-based one-time password (TOTP) authenticator app.
@@ -85,7 +87,7 @@ Generate a preview, customize a treatment stage, and select **Entrar para salvar
 - To verify FSD-04A, run `APP_AUTH_MFA_REQUIRED=false ./gradlew postgresqlTest` in `backend/` with the `SPRING_DATASOURCE_*` variables pointing to an empty PostgreSQL database dedicated to that run. The suite signs in to test accounts using passwords. It applies the migrations, writes test data, verifies the date constraint for each plan, and restarts the app to validate the schema and read the data back. Use a fresh, empty database for each run.
 - In `frontend/`, run `npm ci`, `npm run build`, and `npm test`.
 
-GitHub Actions scans the Git history with Gitleaks, builds Angular and Spring Boot, and runs tests, including integration tests against a disposable PostgreSQL database. Deployment is still in preparation. [CI workflow](.github/workflows/ci.yml)
+GitHub Actions scans the Git history with Gitleaks, audits npm dependencies, builds Angular and Spring Boot, and runs tests, including integration tests against a disposable PostgreSQL database. Deployment is still in preparation. [CI workflow](.github/workflows/ci.yml)
 
 ## Test hair profile persistence (E2-04)
 

@@ -81,19 +81,22 @@
 }
 
 :root[data-theme="pink"] {
-  --canvas: #fff2f7;
+  --canvas: #fff6fa;
   --surface: #fffafd;
-  --neutral: #f7e9ef;
-  --tint-surface: #faeaf1;
-  --tint-light: #fbe1ee;
-  --tint-border: #f2d5e3;
-  --text: #3d2434;
-  --muted: #68475a;
-  --primary: #882754;
-  --primary-hover: #711c45;
-  --accent: #a53469;
-  --focus-ink: #a53469;
-  --line: #ead1dd;
+  --neutral: #fff0f6;
+  --tint-surface: #ffe8f2;
+  --tint-light: #ffe2ef;
+  --tint-border: #f0cedf;
+  --text: #3e2636;
+  --muted: #634553;
+  --primary: #862a56;
+  --primary-hover: #711e46;
+  --accent: #9d4771;
+  --selection-bg: #f6bdd7;
+  --on-accent: #fff;
+  --selection-ink: #54213a;
+  --focus-ink: #8e365f;
+  --line: #e8ccda;
   --input-line: #9a6a82;
   --shadow: 0 2px 8px rgb(104 35 67 / 7%);
   --shadow-raised: 0 8px 24px rgb(165 52 105 / 10%), 0 2px 6px rgb(104 35 67 / 10%);

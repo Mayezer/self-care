@@ -24,9 +24,13 @@ const build = 'dist/autocuidado';
 const browser = `${build}/browser`;
 const guides = HELP_GUIDES.map(({ id }) => GUIDE_PREFIX + id);
 const publicRoutes = ['/', ...(publishGuides ? guides.map(path => '/' + path) : [])];
+const exampleUuid = '00000000-0000-0000-0000-000000000001';
+const uuidPattern = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 const pages = [
   ['/', '/index.html'],
-  ...Object.values(CLIENT_PATHS).map(path => [`~^/${path.replace(':planId', '[1-9][0-9]*')}/?$`, '/index.csr.html']),
+  ...Object.values(CLIENT_PATHS).map(path => [
+    `"~^/${path.replace(':planId', '[1-9][0-9]*').replace(':topicId', uuidPattern)}/?$"`, '/index.csr.html',
+  ]),
   ...guides.map(path => [`~^/${path}/?$`, publishGuides ? `/${path}/index.html` : '/index.csr.html']),
 ];
 for (const file of new Set([...pages.map(([, file]) => file), `/${NOT_FOUND_PATH}/index.html`])) {
@@ -61,7 +65,7 @@ if (origin) {
       ...page, content_marker: page.description, image_path: SOCIAL_IMAGE.path, image_alt: SOCIAL_IMAGE.alt,
     })),
     non_indexable: [
-      ...Object.values(CLIENT_PATHS).map(path => '/' + path.replace(':planId', '1')),
+      ...Object.values(CLIENT_PATHS).map(path => '/' + path.replace(':planId', '1').replace(':topicId', exampleUuid)),
       ...(publishGuides ? [] : guides.map(path => '/' + path)),
     ].map(path => ({ path, statuses: [200] })),
     missing_page: '/pagina-inexistente-verificacao',

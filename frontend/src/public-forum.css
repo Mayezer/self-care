@@ -1,0 +1,16 @@
+.public-forum { max-width: 56rem; }
+.public-forum > .agenda-add { justify-self: start; }
+.public-forum :is(h2, h3, p, li) { overflow-wrap: anywhere; }
+.public-forum section, .forum-topic { display: grid; gap: var(--space-sm); min-width: 0; }
+.forum-search { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: end; gap: var(--space-sm); }
+@media (max-width: 38rem) {
+  .forum-search { grid-template-columns: minmax(0, 1fr); }
+  .forum-search button { justify-self: start; }
+}
+.forum-topic img { display: block; width: auto; max-width: 100%; height: auto; border-radius: var(--radius-md); }
+.forum-text { white-space: pre-wrap; }
+.forum-comments { display: grid; gap: var(--space-sm); }
+.forum-pagination { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: center; }
+.forum-participation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
+.forum-plan-link, .forum-comment-editor button { justify-self: start; }
+.forum-comment-editor fieldset { display: grid; gap: var(--space-sm); min-width: 0; }

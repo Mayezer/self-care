@@ -1,0 +1,61 @@
+<div class="page-width page-content public-forum">
+  <header appPageHeading="forum">
+    <h1 tabindex="-1">Moderação do fórum</h1>
+  </header>
+  <a class="agenda-add" routerLink="/forum">Voltar ao fórum</a>
+  @if (error()) {
+    <p #feedback tabindex="-1" role="alert" class="field-error">{{ error() }}</p>
+  } @else if (message()) {
+    <p #feedback tabindex="-1" role="status">{{ message() }}</p>
+  }
+  @if (busy()) {
+    <p role="status">Atualizando fila…</p>
+  }
+  <div class="forum-actions">
+    <button type="button" class="secondary" [disabled]="busy()" (click)="load()">Atualizar fila</button>
+  </div>
+  @if (queue(); as current) {
+    <div class="forum">
+      <section class="card" aria-labelledby="moderation-pending">
+        <h2 id="moderation-pending">Conteúdo em análise</h2>
+        @for (target of current.pending; track target.kind + target.id) {
+          <article class="forum-topic">
+            <ng-container [ngTemplateOutlet]="preview" [ngTemplateOutletContext]="{ $implicit: target }" />
+            <div class="forum-actions">
+              <button class="primary" type="button" [disabled]="busy()" (click)="decide(target, 'APPROVE')">Aprovar</button>
+              <button class="secondary" type="button" [disabled]="busy()" (click)="decide(target, 'REJECT')">Recusar</button>
+            </div>
+          </article>
+        } @empty { <p>Nenhum conteúdo em análise.</p> }
+      </section>
+      <section class="card" aria-labelledby="moderation-reports">
+        <h2 id="moderation-reports">Denúncias em aberto</h2>
+        @for (report of current.reports; track report.id) {
+          <article class="forum-topic">
+            <ng-container [ngTemplateOutlet]="preview" [ngTemplateOutletContext]="{ $implicit: report.target }" />
+            <p class="forum-text"><strong>Motivo da denúncia</strong> {{ report.reason }}</p>
+            <div class="forum-actions">
+              @if (report.target.status === 'PUBLISHED' && report.target.publicTopic) {
+                <button class="secondary" type="button" [disabled]="busy()" (click)="decide(report.target, 'REMOVE')">Remover conteúdo</button>
+              } @else {
+                <p>O conteúdo saiu do fórum público.</p>
+              }
+              <button class="secondary" type="button" [disabled]="busy()" (click)="closeReport(report.id)">Encerrar denúncia</button>
+            </div>
+          </article>
+        } @empty { <p>Nenhuma denúncia em aberto.</p> }
+      </section>
+    </div>
+  }
+</div>
+
+<ng-template #preview let-target>
+  <h3>{{ target.title || target.product || label(target) }}</h3>
+  @if (target.title || target.product) { <p class="hint">{{ label(target) }}</p> }
+  @if (target.kind === 'TOPIC' && target.rating; as rating) { <p class="hint">Nota {{ rating }} de 5</p> }
+  @if (target.kind === 'IMAGE' && target.publicTopic && (target.status === 'IN_REVIEW' || target.status === 'PUBLISHED')) {
+    <img [src]="imageUrl(target)" [alt]="target.preview">
+  } @else {
+    <p class="forum-text">{{ target.preview }}</p>
+  }
+</ng-template>

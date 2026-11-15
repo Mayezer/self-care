@@ -13,10 +13,16 @@
       @if (current.canManage) {
         <p>Confira a situação da assinatura no portal do Stripe.</p>
       } @else {
-        <p>Assinatura mensal por <strong>{{ price(current.monthlyPriceCents) }}</strong> para o diário privado de progresso capilar.</p>
+        <p>Assinatura mensal por <strong>{{ price(current.monthlyPriceCents) }}</strong>.</p>
       }
     }
   </div>
+  @if (forumAvailable()) {
+    <p>Com assinatura ativa, você pode <a routerLink="/forum">publicar e comentar no fórum</a>.</p>
+  }
+  @if (hairDiaryAvailable()) {
+    <p>A assinatura inclui o diário privado de progresso capilar.</p>
+  }
   <p>Agenda, Histórico e Ajuda básica fazem parte do plano gratuito.</p>
   <div class="actions">
     @if (current.canManage) {

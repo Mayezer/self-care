@@ -1,15 +1,16 @@
+import { PageHeading } from './page-heading';
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 @Component({
-  imports: [RouterLink],
+  imports: [PageHeading, RouterLink],
   template: `
     <div class="page-width page-content">
-      <section class="card">
+      <header appPageHeading="help">
         <h1 tabindex="-1">Página não encontrada</h1>
         <p>Confira o endereço ou volte ao cronograma capilar.</p>
-        <a routerLink="/">Voltar ao cronograma</a>
-      </section>
+        <a pageHeadingAction class="secondary" routerLink="/">Voltar ao cronograma</a>
+      </header>
     </div>
   `,
 })

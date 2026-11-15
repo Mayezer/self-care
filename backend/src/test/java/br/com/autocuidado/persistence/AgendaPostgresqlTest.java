@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import br.com.autocuidado.SelfCareApplication;
+import br.com.autocuidado.vanity.MakeupCleaning;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.WebApplicationType;
@@ -59,17 +60,144 @@ class AgendaPostgresqlTest {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @Test
-    void keepsForumDraftsPrivateAndEnforcesTheSharedWeeklyQuotaAcrossSessions() throws Exception {
+    void servesOnlyApprovedForumContentForVisitorsAndBothAccountPlans() throws Exception {
         String database = System.getenv("SPRING_DATASOURCE_URL");
         assertNotNull(database, "Configure um banco PostgreSQL exclusivo para o teste.");
-        String schema = "e212_" + UUID.randomUUID().toString().replace("-", "");
+        String schema = "e310_" + UUID.randomUUID().toString().replace("-", "");
+        String url = database + (database.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+        var path = "/api/forum/public/topics";
+
+        try (var connection = DriverManager.getConnection(database, System.getenv("SPRING_DATASOURCE_USERNAME"),
+                System.getenv("SPRING_DATASOURCE_PASSWORD")); var statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+            try {
+                UUID originalId = UUID.randomUUID();
+                try (var previous = new SpringApplicationBuilder(SelfCareApplication.class).web(WebApplicationType.NONE)
+                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=18")) {
+                    var jdbc = previous.getBean(JdbcTemplate.class);
+                    var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
+                    long free = insertAccount(jdbc, "forum_free", hash, "UTC");
+                    long paid = insertAccount(jdbc, "forum_paid", hash, "America/Sao_Paulo");
+                    jdbc.update("""
+                            INSERT INTO billing_accounts (account_id, customer_request_id, subscription_exists, access_until)
+                            VALUES (?, gen_random_uuid(), true, now() + interval '7 days')
+                            """, paid);
+                    jdbc.update("""
+                            INSERT INTO forum_posts (account_id, id, kind, category, body, status, accepted_at, accepted_week)
+                            VALUES (?, ?, 'STORY', 'MAKEUP', 'Relato público preservado', 'PUBLISHED', now(), current_date)
+                            """, free, originalId);
+                }
+                try (var app = new SpringApplicationBuilder(SelfCareApplication.class)
+                        .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url,
+                                "--app.forum.public-reading-enabled=true")) {
+                    var jdbc = app.getBean(JdbcTemplate.class);
+                    var owner = jdbc.queryForObject("SELECT id FROM accounts WHERE username = 'forum_free'", Long.class);
+                    var migrated = jdbc.queryForObject("SELECT public_id FROM forum_posts WHERE id = ?", UUID.class, originalId);
+                    assertNotEquals(originalId, migrated);
+                    var visible = addForumTopic(jdbc, owner, "PUBLISHED", "Qual pincel usar?", 14);
+                    var pending = addForumTopic(jdbc, owner, "IN_REVIEW", "Segredo pendente", 21);
+                    var rejected = addForumTopic(jdbc, owner, "REJECTED", "Segredo recusado", 28);
+                    var removed = addForumTopic(jdbc, owner, "REMOVED", "Segredo removido", 35);
+                    var draft = jdbc.queryForObject("""
+                            INSERT INTO forum_posts (account_id, id, kind, body, status)
+                            VALUES (?, gen_random_uuid(), 'STORY', 'Segredo rascunho', 'DRAFT') RETURNING public_id
+                            """, UUID.class, owner);
+                    for (String state : List.of("PUBLISHED", "IN_REVIEW", "REJECTED", "REMOVED")) {
+                        jdbc.update("""
+                                INSERT INTO forum_comments (topic_id, account_id, body, status) VALUES (?, ?, ?, ?)
+                                """, visible, owner, "Resposta " + state, state);
+                    }
+                    var jpeg = new java.io.ByteArrayOutputStream();
+                    assertTrue(javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2, 2,
+                            java.awt.image.BufferedImage.TYPE_INT_RGB), "jpg", jpeg));
+                    var approvedImage = addForumImage(jdbc, visible, "PUBLISHED", jpeg.toByteArray());
+                    var pendingImage = addForumImage(jdbc, visible, "IN_REVIEW", jpeg.toByteArray());
+                    var rejectedImage = addForumImage(jdbc, visible, "REJECTED", jpeg.toByteArray());
+                    var removedImage = addForumImage(jdbc, visible, "REMOVED", jpeg.toByteArray());
+                    var hiddenTopicImage = addForumImage(jdbc, pending, "PUBLISHED", jpeg.toByteArray());
+
+                    var guest = new Session(origin(app));
+                    var free = new Session(origin(app));
+                    var paid = new Session(origin(app));
+                    guest.get("/api/agenda", 401);
+                    free.login("forum_free");
+                    paid.login("forum_paid");
+                    for (var reader : List.of(guest, free, paid)) {
+                        var response = reader.send(reader.request(path).GET().build());
+                        assertEquals(200, response.statusCode());
+                        assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+                        var list = JSON.readTree(response.body()).path("topics");
+                        assertEquals(2, list.size());
+                        assertEquals("Relato público preservado", list.get(0).path("body").asString());
+                        assertFalse(list.get(0).has("accountId"));
+                        assertFalse(list.get(0).has("status"));
+                        assertEquals(visible.toString(), JSON.readTree(reader.get(path + "?q=PINCEL", 200))
+                                .at("/topics/0/id").asString());
+                        assertTrue(JSON.readTree(reader.get(path + "?q=segredo", 200)).path("topics").isEmpty());
+                        assertTrue(JSON.readTree(reader.get(path + "?q=%25", 200)).path("topics").isEmpty());
+                        var detail = JSON.readTree(reader.get(path + "/" + visible, 200));
+                        assertEquals("QUESTION", detail.at("/topic/kind").asString());
+                        assertEquals(1, detail.path("comments").size());
+                        assertEquals("Resposta PUBLISHED", detail.at("/comments/0/body").asString());
+                        assertEquals(1, detail.path("images").size());
+                        assertEquals(approvedImage.toString(), detail.at("/images/0/id").asString());
+                        for (var id : List.of(pending, rejected, removed, draft, originalId, UUID.randomUUID())) {
+                            reader.get(path + "/" + id, 404);
+                        }
+                        for (var id : List.of(pendingImage, rejectedImage, removedImage, hiddenTopicImage)) {
+                            reader.get(path + "/" + visible + "/images/" + id, 404);
+                        }
+                        reader.get(path + "/" + pending + "/images/" + hiddenTopicImage, 404);
+                        var image = reader.send(reader.request(path + "/" + visible + "/images/" + approvedImage)
+                                .method("HEAD", HttpRequest.BodyPublishers.noBody()).build());
+                        assertEquals(200, image.statusCode());
+                        assertEquals("image/jpeg", image.headers().firstValue("Content-Type").orElseThrow());
+                        assertEquals("no-store", image.headers().firstValue("Cache-Control").orElseThrow());
+                    }
+                    var img = HttpClient.newHttpClient().send(guest.request(path + "/" + visible + "/images/" + approvedImage)
+                            .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+                    assertEquals(200, img.statusCode());
+                    org.junit.jupiter.api.Assertions.assertArrayEquals(jpeg.toByteArray(), img.body());
+                    paid.post("/api/forum/posts/" + UUID.randomUUID() + "/submit", "{}", true, 404);
+                    jdbc.update("UPDATE forum_posts SET status = 'REMOVED' WHERE public_id = ?", visible);
+                    guest.get(path + "/" + visible, 404);
+                    guest.get(path + "/" + visible + "/images/" + approvedImage, 404);
+                    assertTrue(JSON.readTree(guest.get(path + "?q=pincel", 200)).path("topics").isEmpty());
+                }
+            } finally {
+                statement.execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
+    }
+
+    private static UUID addForumTopic(JdbcTemplate jdbc, long owner, String status, String title, int daysAgo) {
+        return jdbc.queryForObject("""
+                INSERT INTO forum_posts (account_id, id, kind, category, title, body, status, accepted_at)
+                VALUES (?, gen_random_uuid(), 'QUESTION', 'MAKEUP', ?, 'Corpo de teste', ?, now() - make_interval(days => ?))
+                RETURNING public_id
+                """, UUID.class, owner, title, status, daysAgo);
+    }
+
+    private static UUID addForumImage(JdbcTemplate jdbc, UUID topic, String status, byte[] jpeg) {
+        return jdbc.queryForObject("""
+                INSERT INTO forum_images (topic_id, alt_text, jpeg_bytes, status)
+                VALUES (?, 'Imagem fictícia', ?, ?) RETURNING id
+                """, UUID.class, topic, jpeg, status);
+    }
+
+    @Test
+    void enforcesPaidForumParticipationAndSharedDailyQuotaAcrossSessions() throws Exception {
+        String database = System.getenv("SPRING_DATASOURCE_URL");
+        assertNotNull(database, "Configure um banco PostgreSQL exclusivo para o teste.");
+        String schema = "e311_" + UUID.randomUUID().toString().replace("-", "");
         String url = database + (database.contains("?") ? "&" : "?") + "currentSchema=" + schema;
         String path = "/api/forum/posts";
+        String participation = "/api/forum/participation";
         String review = """
                 {"kind":"REVIEW","category":"SKIN","body":"Relato fictício","product":"Produto de teste","rating":5}
                 """;
         String story = """
-                {"kind":"STORY","category":"HAIR","body":"Rotina fictícia"}
+                {"kind":"QUESTION","category":"HAIR","title":"Qual rotina?","body":"Rotina fictícia"}
                 """;
 
         try (var connection = DriverManager.getConnection(database, System.getenv("SPRING_DATASOURCE_USERNAME"),
@@ -77,7 +205,8 @@ class AgendaPostgresqlTest {
             statement.execute("CREATE SCHEMA " + schema);
             try {
                 try (var previous = new SpringApplicationBuilder(SelfCareApplication.class).web(WebApplicationType.NONE)
-                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=8")) {
+                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=8",
+                                "--spring.jpa.hibernate.ddl-auto=none")) {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
                     insertAccount(jdbc, "forum_owner", hash, "Asia/Tokyo");
@@ -85,18 +214,48 @@ class AgendaPostgresqlTest {
                 }
                 try (var app = new SpringApplicationBuilder(SelfCareApplication.class, MutableClockConfiguration.class)
                         .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url,
-                                "--app.forum.enabled=true")) {
+                                "--app.forum.enabled=true", "--app.forum.public-reading-enabled=true")) {
+                    var jdbc = app.getBean(JdbcTemplate.class);
                     var time = app.getBean(MutableTime.class).instant();
-                    time.set(Instant.parse("2026-11-09T02:59:59Z"));
+                    var expires = Instant.parse("2026-11-10T02:59:59Z");
+                    time.set(expires.minusSeconds(1));
+                    var topic = jdbc.queryForObject("""
+                            INSERT INTO forum_posts (account_id, id, kind, category, body, status, accepted_at)
+                            SELECT id, gen_random_uuid(), 'STORY', 'HAIR', 'Tema fictício', 'PUBLISHED', ?
+                            FROM accounts WHERE username = 'forum_other' RETURNING public_id
+                            """, UUID.class, expires.minus(Duration.ofDays(1)).atOffset(ZoneOffset.UTC));
+                    var publicPath = "/api/forum/public/topics/" + topic;
+                    var commentPath = "/api/forum/topics/" + topic + "/comments/";
+                    var commentId = UUID.randomUUID();
+                    var comment = """
+                            {"body":"Comentário fictício"}
+                            """;
+                    var guest = new Session(origin(app));
                     var owner = new Session(origin(app));
                     var device = new Session(origin(app));
                     var other = new Session(origin(app));
                     var draft = path + "/" + UUID.randomUUID();
                     var second = path + "/" + UUID.randomUUID();
-                    owner.get(path, 401);
+                    guest.get(path, 401);
+                    guest.post(draft + "/submit", story, false, 401);
+                    guest.post(draft + "/submit", story, true, 401);
+                    guest.post(commentPath + commentId, comment, true, 401);
+                    assertEquals("VISITOR", JSON.readTree(guest.get(participation, 200)).path("state").asString());
                     owner.login("forum_owner");
                     device.login("forum_owner");
                     other.login("forum_other");
+                    assertEquals("INACTIVE", JSON.readTree(other.get(participation, 200)).path("state").asString());
+                    assertEquals("SUBSCRIPTION_REQUIRED", JSON.readTree(other.post(draft + "/submit", story, true, 403))
+                            .path("code").asString());
+                    other.post(commentPath + commentId, comment, true, 403);
+                    other.put(draft, review, true, 403);
+                    jdbc.update("""
+                            INSERT INTO billing_accounts (account_id, customer_request_id, subscription_exists,
+                                access_until, cancel_at_period_end)
+                            SELECT id, gen_random_uuid(), true, ?, true FROM accounts WHERE username = 'forum_owner'
+                            """, expires.atOffset(ZoneOffset.UTC));
+                    assertEquals("ACTIVE", JSON.readTree(owner.get(participation, 200)).path("state").asString());
+                    assertEquals(guest.get(publicPath, 200), other.get(publicPath, 200));
                     owner.put(draft, review, false, 403);
                     for (String invalid : List.of("0", "6", "1.5", "5.0", "\"5\"")) {
                         assertTrue(JSON.readTree(owner.post(draft + "/submit", review.replace("\"rating\":5",
@@ -104,8 +263,16 @@ class AgendaPostgresqlTest {
                     }
                     assertEquals("DRAFT", owner.put(draft, "{\"kind\":\"REVIEW\"}", true, 200).path("status").asString());
                     assertEquals("DRAFT", owner.put(draft, review, true, 200).path("status").asString());
-                    assertTrue(JSON.readTree(other.get(path, 200)).path("posts").isEmpty());
+                    assertEquals(1, JSON.readTree(other.get(path, 200)).path("posts").size());
                     assertTrue(JSON.readTree(owner.get(path, 200)).path("nextAvailableAt").isNull());
+                    time.set(expires);
+                    owner.post(draft + "/submit", review, true, 403);
+                    owner.post(commentPath + commentId, comment, true, 403);
+                    assertEquals("DRAFT", JSON.readTree(owner.get(path, 200)).at("/posts/0/status").asString());
+                    assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM forum_comments", Integer.class));
+                    jdbc.update("UPDATE billing_accounts SET access_until = ?, cancel_at_period_end = false",
+                            expires.plus(Duration.ofDays(7)).atOffset(ZoneOffset.UTC));
+                    assertEquals("ACTIVE", JSON.readTree(owner.get(participation, 200)).path("state").asString());
                     var firstRequest = owner.postRequest(draft + "/submit", review, true);
                     var secondRequest = device.postRequest(second + "/submit", story, true);
                     HttpResponse<String> firstResponse;
@@ -125,20 +292,24 @@ class AgendaPostgresqlTest {
                     var loser = reviewWon ? second : draft;
                     var winningText = reviewWon ? review : story;
                     var losingText = reviewWon ? story : review;
-                    assertEquals("2026-11-09T00:00:00-03:00", limited.path("nextAvailableAt").asString());
+                    assertEquals("2026-11-10T00:00:00-03:00", limited.path("nextAvailableAt").asString());
                     assertEquals("IN_REVIEW", accepted.path("status").asString());
-                    assertTrue(JSON.readTree(other.get(path, 200)).path("posts").isEmpty());
+                    assertEquals(1, JSON.readTree(other.get(path, 200)).path("posts").size());
+                    var receipt = JSON.readTree(owner.post(commentPath + commentId, comment, true, 200));
+                    assertEquals(receipt, JSON.readTree(device.post(commentPath + commentId, comment, true, 200)));
+                    assertTrue(JSON.readTree(guest.get(publicPath, 200)).path("comments").isEmpty());
+                    assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM forum_comments WHERE status = 'IN_REVIEW'", Integer.class));
+                    for (int i = 0; i < 9; i++) owner.post(commentPath + UUID.randomUUID(), comment, true, 200);
+                    owner.post(commentPath + UUID.randomUUID(), comment, true, 429);
+                    assertEquals(receipt, JSON.readTree(device.post(commentPath + commentId, comment, true, 200)));
                     other.post(winner + "/withdraw", null, true, 404);
                     owner.post(winner + "/withdraw", null, true, 204);
                     owner.post(loser + "/submit", losingText, true, 429);
-                    time.set(Instant.parse("2026-11-09T03:00:00Z"));
+                    time.set(expires.plusSeconds(1));
                     assertEquals(accepted, JSON.readTree(owner.post(winner + "/submit", winningText, true, 200)));
                     assertTrue(JSON.readTree(owner.get(path, 200)).path("nextAvailableAt").isNull());
                     assertEquals("IN_REVIEW", JSON.readTree(owner.post(loser + "/submit", losingText, true, 200))
                             .path("status").asString());
-                    var optionalRating = review.replace(",\"rating\":5", "");
-                    assertTrue(JSON.readTree(other.post(second + "/submit", optionalRating, true, 200))
-                            .at("/content/rating").isNull());
                     assertEquals(2, JSON.readTree(owner.get(path, 200)).path("posts").size());
                     assertEquals(200, owner.send(owner.request("/api/agenda").GET().build()).statusCode());
                 }
@@ -146,6 +317,165 @@ class AgendaPostgresqlTest {
                 statement.execute("DROP SCHEMA " + schema + " CASCADE");
             }
         }
+    }
+
+
+    @Test
+    void schedulesCleaningByCivilDateAndKeepsCompletedOccurrencesThroughPauseAndResume() throws Exception {
+        String database = System.getenv("SPRING_DATASOURCE_URL");
+        assertNotNull(database, "Configure um banco PostgreSQL exclusivo para o teste.");
+        String schema = "e308_" + UUID.randomUUID().toString().replace("-", "");
+        String url = database + (database.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+        String path = "/api/makeup-cleaning";
+        String brushes = path + "/BRUSHES";
+        String sponges = path + "/SPONGES";
+        String create = """
+                {"revision":0,"startDate":"2026-11-30","intervalDays":14}
+                """;
+        String edit = """
+                {"revision":1,"startDate":"2026-12-14","intervalDays":10}
+                """;
+        String pause = """
+                {"revision":2}
+                """;
+        String resume = """
+                {"revision":3,"startDate":"2026-12-24","intervalDays":10}
+                """;
+
+        try (var connection = DriverManager.getConnection(database, System.getenv("SPRING_DATASOURCE_USERNAME"),
+                System.getenv("SPRING_DATASOURCE_PASSWORD")); var statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+            try (var app = new SpringApplicationBuilder(SelfCareApplication.class, MutableClockConfiguration.class)
+                    .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url,
+                            "--app.agenda.reminders-enabled=true")) {
+                var clock = app.getBean(MutableTime.class).instant();
+                clock.set(Instant.parse("2026-12-01T01:00:00Z"));
+                var jdbc = app.getBean(JdbcTemplate.class);
+                var hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
+                insertAccount(jdbc, "cleaning_sp", hash, "America/Sao_Paulo");
+                insertAccount(jdbc, "cleaning_utc", hash, "UTC");
+                var owner = new Session(origin(app));
+                var other = new Session(origin(app));
+                owner.get(path, 401);
+                owner.login("cleaning_sp");
+                other.login("cleaning_utc");
+                var empty = JSON.readTree(owner.get(path, 200));
+                assertEquals(14, empty.path("defaultInterval").asInt());
+                assertEquals("2026-11-30", empty.path("today").asString());
+                assertTrue(empty.path("schedules").isEmpty());
+                assertEquals("2026-12-01", JSON.readTree(other.get(path, 200)).path("today").asString());
+                other.put(brushes, create, true, 400);
+                owner.put(brushes, create, false, 403);
+                owner.put(brushes, create.replace("14", "0"), true, 400);
+                owner.put(brushes, create.replace("14", "14.5"), true, 400);
+                owner.put(brushes, create.replace("{", "{\"accountId\":1,"), true, 400);
+                assertEquals(empty, JSON.readTree(owner.get(path, 200)));
+
+                var retry = new Session(origin(app));
+                retry.login("cleaning_sp");
+                var startAtOnce = new CyclicBarrier(2);
+                try (var workers = Executors.newVirtualThreadPerTaskExecutor()) {
+                    var first = workers.submit(() -> {
+                        startAtOnce.await(5, TimeUnit.SECONDS);
+                        return owner.put(brushes, create, true, 200);
+                    });
+                    var second = workers.submit(() -> {
+                        startAtOnce.await(5, TimeUnit.SECONDS);
+                        return retry.put(brushes, create, true, 200);
+                    });
+                    var saved = first.get(15, TimeUnit.SECONDS);
+                    assertEquals(1, saved.at("/schedules/0/revision").asInt());
+                    assertEquals(saved, second.get(15, TimeUnit.SECONDS));
+                }
+                owner.put(brushes, create.replace("14", "12"), true, 409);
+                var both = owner.put(sponges, create, true, 200);
+                assertEquals(2, both.path("schedules").size());
+                assertTrue(JSON.readTree(other.get(path, 200)).path("schedules").isEmpty());
+                other.post(brushes + "/pause", pause, true, 409);
+
+                var week = owner.week("");
+                assertEquals(2, week.path("items").size());
+                long firstBrush = week.at("/items/0/id").asLong();
+                assertFalse(week.at("/items/0/canReschedule").asBoolean());
+                assertTrue(week.at("/items/0/reminderTime").isNull());
+                assertEquals("Limpeza de pincéis", week.at("/items/0/title").asString());
+                other.action(firstBrush, "skip", null, true, 404);
+                owner.action(firstBrush, "reschedule", plannedOn("2026-12-02"), true, 409);
+
+                String prefs = """
+                        {"enabled":true,"categories":["MAKEUP"],"time":"08:30","timeZone":"America/Sao_Paulo"}
+                        """;
+                owner.put(REMINDERS, prefs, true, 200);
+                assertEquals("08:30", owner.week("").at("/items/0/reminderTime").asString());
+                assertEquals(2, owner.week("?date=2026-12-14").path("items").size());
+                assertEquals("2026-12-14", owner.week("?date=2026-12-14").at("/items/0/date").asString());
+                long nextOriginal = owner.week("?date=2026-12-14").at("/items/0/id").asLong();
+                assertEquals(1L, pushCandidates(jdbc, nextOriginal));
+
+                // Complete the first brush cleaning two days late; the next date remains anchored to Nov 30.
+                clock.set(Instant.parse("2026-12-02T16:00:00Z"));
+                owner.login("cleaning_sp");
+                owner.action(firstBrush, "complete", "{\"completedOn\":\"2026-12-02\"}", true, 204);
+                var history = JSON.readTree(owner.get(HISTORY, 200));
+                assertEquals(firstBrush, history.at("/0/id").asLong());
+                assertEquals("2026-12-14", JSON.readTree(owner.get(path, 200)).at("/schedules/0/nextDate").asString());
+
+                var changed = owner.put(brushes, edit, true, 200);
+                assertEquals(changed, owner.put(brushes, edit, true, 200));
+                var editedWeek = owner.week("?date=2026-12-24");
+                long movedBrush = editedWeek.at("/items/0/id").asLong();
+                assertEquals("2026-12-24", editedWeek.at("/items/0/date").asString());
+                assertEquals(1L, pushCandidates(jdbc, movedBrush));
+
+                var paused = JSON.readTree(owner.post(brushes + "/pause", pause, true, 200));
+                assertEquals(paused, JSON.readTree(owner.post(brushes + "/pause", pause, true, 200)));
+                assertFalse(paused.at("/schedules/0/active").asBoolean());
+                assertTrue(paused.at("/schedules/1/active").asBoolean());
+                assertEquals(0L, pushCandidates(jdbc, movedBrush));
+                assertEquals(0L, pushCandidates(jdbc, nextOriginal));
+                owner.action(movedBrush, "skip", null, true, 404);
+                assertEquals(history, JSON.readTree(owner.get(HISTORY, 200)));
+                assertFalse(owner.week("?date=2026-12-24").path("items").valueStream()
+                        .anyMatch(item -> item.path("title").asString().equals("Limpeza de pincéis")));
+
+                var resumed = owner.put(brushes, resume, true, 200);
+                assertEquals(resumed, owner.put(brushes, resume, true, 200));
+                owner.post(brushes + "/pause", pause, true, 409);
+                assertEquals(movedBrush, owner.week("?date=2026-12-24").at("/items/0/id").asLong());
+                assertTrue(hasCleaning(owner.week("?date=2027-01-03"), "Limpeza de pincéis", "2027-01-03"));
+                assertEquals(1L, pushCandidates(jdbc, movedBrush));
+                owner.put(REMINDERS, prefs.replace("MAKEUP", "SKIN"), true, 200);
+                assertEquals(0L, pushCandidates(jdbc, movedBrush));
+                assertTrue(owner.week("?date=2026-12-24").at("/items/0/reminderTime").isNull());
+                assertEquals(history, JSON.readTree(owner.get(HISTORY, 200)));
+
+                // Extend the schedule without a request from the user, then retry the refresh.
+                clock.set(Instant.parse("2027-03-05T02:00:00Z"));
+                var service = app.getBean(MakeupCleaning.class);
+                service.refresh();
+                service.refresh();
+                owner.login("cleaning_sp");
+                assertEquals("2027-03-04", JSON.readTree(owner.get(path, 200)).path("today").asString());
+                assertEquals("2027-03-04", JSON.readTree(owner.get(path, 200)).at("/schedules/0/nextDate").asString());
+                assertTrue(hasCleaning(owner.week("?date=2027-04-03"), "Limpeza de pincéis", "2027-04-03"));
+                assertEquals(2L, jdbc.queryForObject("SELECT count(*) FROM makeup_cleaning_series", Long.class));
+                assertEquals(0L, jdbc.queryForObject("""
+                        SELECT count(*) FROM (SELECT cleaning_series_id, planned_date FROM care_occurrences
+                        WHERE cleaning_series_id IS NOT NULL GROUP BY 1, 2 HAVING count(*) > 1) duplicates
+                        """, Long.class));
+            } finally {
+                statement.execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
+    }
+
+    private static long pushCandidates(JdbcTemplate jdbc, long occurrence) {
+        return jdbc.queryForObject("SELECT count(*) FROM web_push_reminders WHERE occurrence_id = ?", Long.class, occurrence);
+    }
+
+    private static boolean hasCleaning(JsonNode week, String title, String date) {
+        return week.path("items").valueStream().anyMatch(item ->
+                item.path("title").asString().equals(title) && item.path("date").asString().equals(date));
     }
 
     @Test
@@ -167,7 +497,8 @@ class AgendaPostgresqlTest {
             try {
                 long owner;
                 try (var previous = new SpringApplicationBuilder(SelfCareApplication.class).web(WebApplicationType.NONE)
-                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=6")) {
+                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=6",
+                                "--spring.jpa.hibernate.ddl-auto=none")) {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
                     owner = insertAccount(jdbc, "reminder_owner", hash, "America/Sao_Paulo");
@@ -225,9 +556,11 @@ class AgendaPostgresqlTest {
                     var moved = item(session.week(""), skin);
                     assertEquals("2026-11-11", moved.path("date").asString());
                     assertEquals("08:30", moved.path("reminderTime").asString());
+                    session.action(skin, "reschedule", plannedOn("2026-11-09"), true, 204);
                     session.action(skin, "complete", "{\"completedOn\":\"2026-11-09\"}", true, 204);
                     assertTrue(item(session.week(""), skin).path("reminderTime").isNull());
                     session.action(skin, "undo", null, true, 204);
+                    session.action(skin, "reschedule", plannedOn("2026-11-11"), true, 204);
                     assertEquals("08:30", item(session.week(""), skin).path("reminderTime").asString());
                     session.action(skin, "skip", null, true, 204);
                     assertTrue(item(session.week(""), skin).path("reminderTime").isNull());
@@ -313,7 +646,8 @@ class AgendaPostgresqlTest {
                 long owner;
                 long other;
                 try (var previous = new SpringApplicationBuilder(SelfCareApplication.class).web(WebApplicationType.NONE)
-                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=5")) {
+                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=5",
+                                "--spring.jpa.hibernate.ddl-auto=none")) {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
                     owner = insertAccount(jdbc, "daily_sp", hash, "America/Sao_Paulo");
@@ -499,6 +833,90 @@ class AgendaPostgresqlTest {
 
     private static void assertStreak(Session session, String query, int days) throws Exception {
         assertEquals(JSON.getNodeFactory().numberNode(days), session.week(query).path("careStreakDays"));
+    }
+
+    @Test
+    void completesPlannedCareOnlyFromItsDateInTheAccountTimeZone() throws Exception {
+        String database = System.getenv("SPRING_DATASOURCE_URL");
+        assertNotNull(database, "Configure um banco PostgreSQL exclusivo para o teste.");
+        String schema = "e302_" + UUID.randomUUID().toString().replace("-", "");
+        String url = database + (database.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+        String friday = "2026-11-13";
+        String sunday = "2026-11-15";
+        String fridayCompletion = "{\"completedOn\":\"2026-11-13\"}";
+        String sundayCompletion = "{\"completedOn\":\"2026-11-15\"}";
+
+        try (var connection = DriverManager.getConnection(database, System.getenv("SPRING_DATASOURCE_USERNAME"),
+                System.getenv("SPRING_DATASOURCE_PASSWORD")); var statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+            try (var app = new SpringApplicationBuilder(SelfCareApplication.class, MutableClockConfiguration.class)
+                    .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url,
+                            "--app.agenda.reminders-enabled=true", "--app.auth.session-max-age=3d")) {
+                var time = app.getBean(MutableTime.class).instant();
+                time.set(Instant.parse("2026-11-13T15:00:00Z"));
+                var jdbc = app.getBean(JdbcTemplate.class);
+                String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
+                insertAccount(jdbc, "dates_sp", hash, "America/Sao_Paulo");
+                insertAccount(jdbc, "dates_utc", hash, "UTC");
+                var saoPaulo = new Session(origin(app));
+                var utc = new Session(origin(app));
+                saoPaulo.login("dates_sp");
+                utc.login("dates_utc");
+                saoPaulo.put(REMINDERS, """
+                        {"enabled":true,"categories":["SKIN"],"time":"20:00","timeZone":"America/Sao_Paulo"}
+                        """, true, 200);
+
+                String futureCare = "{\"title\":\"Cuidado de domingo\",\"plannedDate\":\"2026-11-15\"}";
+                long future = JSON.readTree(saoPaulo.post(SKIN, futureCare, true, 201)).path("id").asLong();
+                long moved = JSON.readTree(saoPaulo.post(SKIN, futureCare, true, 201)).path("id").asLong();
+                long utcCare = JSON.readTree(utc.post(SKIN, futureCare, true, 201)).path("id").asLong();
+                long overdue = JSON.readTree(saoPaulo.post(SKIN, """
+                        {"title":"Cuidado de sexta","plannedDate":"2026-11-13"}
+                        """, true, 201)).path("id").asLong();
+                var original = saoPaulo.week("");
+                assertEquals(friday, original.path("today").asString());
+                assertEquals("PLANNED", item(original, future).path("status").asString());
+                assertEquals("20:00", item(original, future).path("reminderTime").asString());
+                assertEquals(0, original.path("completedCount").asInt(-1));
+                assertTrue(JSON.readTree(saoPaulo.action(future, "complete", fridayCompletion, true, 409))
+                        .at("/errors/status").isString());
+                assertTrue(JSON.readTree(saoPaulo.action(future, "complete", sundayCompletion, true, 400))
+                        .at("/errors/completedOn").isString());
+                utc.action(future, "complete", fridayCompletion, true, 404);
+                assertTrue(JSON.readTree(saoPaulo.post(HISTORY + "/makeup", """
+                        {"title":"Maquiagem direta","completedOn":"2026-11-15"}
+                        """, true, 400)).at("/errors/completedOn").isString());
+                assertEquals(original, saoPaulo.week(""));
+                assertTrue(JSON.readTree(saoPaulo.get(HISTORY, 200)).isEmpty());
+
+                saoPaulo.action(moved, "reschedule", plannedOn(friday), true, 204);
+                saoPaulo.action(moved, "complete", fridayCompletion, true, 204);
+                assertEquals(friday, item(saoPaulo.week(""), moved).path("completedOn").asString());
+                saoPaulo.post(HISTORY + "/makeup", """
+                        {"title":"Maquiagem direta","completedOn":"2026-11-13"}
+                        """, true, 201);
+
+                time.set(Instant.parse("2026-11-15T02:59:59Z"));
+                assertEquals("2026-11-14", saoPaulo.week("").path("today").asString());
+                assertEquals(sunday, utc.week("").path("today").asString());
+                saoPaulo.action(future, "complete", fridayCompletion, true, 409);
+                utc.action(utcCare, "complete", sundayCompletion, true, 204);
+                assertEquals("PLANNED", item(saoPaulo.week(""), "overdue", overdue).path("status").asString());
+                saoPaulo.action(overdue, "complete", fridayCompletion, true, 204);
+
+                time.set(Instant.parse("2026-11-15T03:00:00Z"));
+                assertEquals(sunday, saoPaulo.week("").path("today").asString());
+                saoPaulo.action(future, "complete", sundayCompletion, true, 204);
+                saoPaulo.action(future, "complete", fridayCompletion, true, 204);
+                var completed = saoPaulo.week("");
+                assertEquals(sunday, item(completed, future).path("completedOn").asString());
+                assertTrue(item(completed, future).path("reminderTime").isNull());
+                assertEquals(4, completed.path("completedCount").asInt(-1));
+                assertEquals(4, JSON.readTree(saoPaulo.get(HISTORY, 200)).size());
+            } finally {
+                statement.execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
     }
 
     @Test
@@ -701,6 +1119,7 @@ class AgendaPostgresqlTest {
                     assertEquals("2026-11-10", item(session.week(""), "items", id).path("date").asString());
                     session.action(id, "skip", null, true, 204);
                     session.action(id, "undo", null, true, 204);
+                    session.action(id, "reschedule", plannedOn("2026-11-09"), true, 204);
                     session.action(id, "complete", """
                             {"completedOn":"2026-11-09"}
                             """, true, 204);
@@ -882,6 +1301,124 @@ class AgendaPostgresqlTest {
     }
 
     @Test
+    void savesTheConfirmedSkinRoutineAtomicallyAndReusesTheResultAcrossSessions() throws Exception {
+        String database = System.getenv("SPRING_DATASOURCE_URL");
+        assertNotNull(database, "Configure um banco PostgreSQL exclusivo para o teste.");
+        String schema = "e306_" + UUID.randomUUID().toString().replace("-", "");
+        String url = database + (database.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+        String endpoint = "/api/skin-routines";
+        String morning = """
+                {"period":"MORNING","title":"Manhã editada","weekdays":["MONDAY","FRIDAY"],
+                 "steps":["Limpeza facial suave","Hidratação leve","Proteção solar"]}
+                """;
+        String night = """
+                {"period":"NIGHT","title":"Noite editada","weekdays":["MONDAY","THURSDAY"],
+                 "steps":["Remover a maquiagem","Hidratação"]}
+                """;
+        String requestId = UUID.randomUUID().toString();
+        String format = """
+                {"requestId":"%s","startDate":"2026-11-09","weeks":1,"periods":[%s]}
+                """;
+        String both = format.formatted(requestId, morning + "," + night);
+
+        try (var connection = DriverManager.getConnection(database, System.getenv("SPRING_DATASOURCE_USERNAME"),
+                System.getenv("SPRING_DATASOURCE_PASSWORD")); var statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+            try (var app = new SpringApplicationBuilder(SelfCareApplication.class, FixedClock.class)
+                    .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url)) {
+                var jdbc = app.getBean(JdbcTemplate.class);
+                String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
+                long ownerId = insertAccount(jdbc, "skin_owner", hash, "America/Sao_Paulo");
+                insertAccount(jdbc, "skin_other", hash, "UTC");
+                var owner = new Session(origin(app));
+                var device = new Session(origin(app));
+                var other = new Session(origin(app));
+                owner.post(endpoint, both, true, 401);
+                owner.login("skin_owner");
+                device.login("skin_owner");
+                other.login("skin_other");
+                owner.post(endpoint, both, false, 403);
+                owner.post(endpoint, both.replace("\"weeks\":1", "\"accountId\":" + ownerId + ",\"weeks\":1"), true, 400);
+                var invalid = owner.post(endpoint, both.replace("\"Hidratação\"", "\" \""), true, 400);
+                assertTrue(JSON.readTree(invalid).at("/errors/NIGHT.steps").isString());
+
+                String original = """
+                        {"title":"Rotina existente","period":"MORNING","startDate":"2026-11-09",
+                         "weeks":1,"weekdays":["MONDAY"],"requestId":"%s"}
+                        """.formatted(UUID.randomUUID());
+                long originalId = JSON.readTree(owner.post(SKIN_PLANS, original, true, 201)).path("planId").asLong();
+
+                // Fail after the morning plan and its occurrences have been inserted.
+                jdbc.execute("""
+                        ALTER TABLE care_occurrences ADD CONSTRAINT test_reject_night CHECK (title <> 'Noite editada')
+                        """);
+                owner.post(endpoint, both, true, 500);
+                assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM recurring_plans", Long.class));
+                assertEquals(1L, jdbc.queryForObject("SELECT COUNT(*) FROM care_occurrences", Long.class));
+                jdbc.execute("ALTER TABLE care_occurrences DROP CONSTRAINT test_reject_night");
+
+                String reordered = format.formatted(requestId,
+                        night + "," + morning.replace("[\"MONDAY\",\"FRIDAY\"]", "[\"FRIDAY\",\"MONDAY\"]"));
+                var gate = new CyclicBarrier(2);
+                JsonNode ids;
+                try (var workers = Executors.newFixedThreadPool(2)) {
+                    var first = workers.submit(() -> {
+                        gate.await(5, TimeUnit.SECONDS);
+                        return JSON.readTree(owner.post(endpoint, both, true, 201)).path("planIds");
+                    });
+                    var retry = workers.submit(() -> {
+                        gate.await(5, TimeUnit.SECONDS);
+                        return JSON.readTree(device.post(endpoint, reordered, true, 201)).path("planIds");
+                    });
+                    ids = first.get(15, TimeUnit.SECONDS);
+                    assertEquals(ids, retry.get(15, TimeUnit.SECONDS));
+                }
+                assertEquals(2, ids.size());
+                owner.post(endpoint, both.replace("Hidratação leve", "Hidratação alterada"), true, 409);
+                assertEquals(3L, jdbc.queryForObject("SELECT COUNT(*) FROM recurring_plans", Long.class));
+                assertEquals(5L, jdbc.queryForObject("SELECT COUNT(*) FROM care_occurrences", Long.class));
+
+                var week = owner.week("");
+                assertEquals(JSON.readTree("""
+                        ["Rotina existente","Manhã editada","Noite editada","Noite editada","Manhã editada"]
+                        """), titles(week.path("items")));
+                assertEquals(originalId, week.at("/nextCare/planId").asLong());
+                assertEquals("2026-11-09", week.at("/items/1/date").asString());
+                assertEquals("2026-11-09", week.at("/items/2/date").asString());
+                assertEquals("2026-11-12", week.at("/items/3/date").asString());
+                assertEquals("2026-11-13", week.at("/items/4/date").asString());
+                assertEquals("MORNING", week.at("/items/1/period").asString());
+                assertEquals("NIGHT", week.at("/items/2/period").asString());
+                assertEquals(JSON.readTree("""
+                        ["Limpeza facial suave","Hidratação leve","Proteção solar"]
+                        """), week.at("/items/1/skinSteps"));
+                var nightSteps = JSON.readTree("""
+                        ["Remover a maquiagem","Hidratação"]
+                        """);
+                assertEquals(nightSteps, week.at("/items/2/skinSteps"));
+                long nightOccurrence = week.at("/items/2/id").asLong();
+                assertTrue(other.week("").path("items").isEmpty());
+                other.action(nightOccurrence, "skip", null, true, 404);
+                other.post(SKIN_PLANS + "/" + ids.get(1).asLong() + "/close", null, true, 404);
+                owner.action(nightOccurrence, "complete", "{\"completedOn\":\"2026-11-09\"}", true, 204);
+                assertEquals(nightSteps, JSON.readTree(owner.get(HISTORY, 200)).at("/0/skinSteps"));
+                assertTrue(JSON.readTree(other.get(HISTORY, 200)).isEmpty());
+
+                // The same civil date is already past for the UTC account.
+                other.post(endpoint, format.formatted(requestId, night), true, 400);
+                var single = format.formatted(requestId, night).replace("2026-11-09", "2026-11-10");
+                var otherIds = JSON.readTree(other.post(endpoint, single, true, 201)).path("planIds");
+                assertEquals(1, otherIds.size());
+                assertNotEquals(ids.get(1), otherIds.get(0));
+                assertEquals(otherIds, JSON.readTree(other.post(endpoint, single, true, 201)).path("planIds"));
+                assertEquals(JSON.readTree("[\"Noite editada\"]"), titles(other.week("").path("items")));
+            } finally {
+                statement.execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
+    }
+
+    @Test
     void loadsTheAccountWeekAndSeparatesOverdueFromUpcomingCare() throws Exception {
         String database = System.getenv("SPRING_DATASOURCE_URL");
         assertNotNull(database, "Configure um banco PostgreSQL exclusivo para o teste.");
@@ -1037,11 +1574,16 @@ class AgendaPostgresqlTest {
 
                 var secondSession = new Session(origin);
                 secondSession.login("owner_actions");
+                var firstCompletion = session.actionRequest(today, "complete", sunday, true);
+                var secondCompletion = secondSession.actionRequest(today, "complete", sunday, true);
                 try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-                    var first = executor.submit(() -> session.action(today, "complete", sunday, true, 204));
-                    var second = executor.submit(() -> secondSession.action(today, "complete", sunday, true, 204));
-                    first.get();
-                    second.get();
+                    var first = executor.submit(() -> session.send(firstCompletion));
+                    var second = executor.submit(() -> secondSession.send(secondCompletion));
+                    var responses = List.of(first.get(), second.get());
+                    assertTrue(responses.stream().allMatch(response -> response.statusCode() == 204));
+                    assertEquals(List.of("applied", "unchanged"), responses.stream()
+                            .map(response -> response.headers().firstValue("X-Care-Completion").orElseThrow())
+                            .sorted().toList());
                 }
                 assertEquals(1, session.week("?date=2026-11-08").path("completedCount").asInt());
                 assertEquals(2, session.week("").path("completedCount").asInt());
@@ -1286,6 +1828,9 @@ class AgendaPostgresqlTest {
                         """;
                 long futureCompleted = jdbc.queryForObject(futureSession, Long.class, owner, planId,
                         "Lavagem concluída antes do previsto", "2026-11-11");
+                // Preserve a completion recorded by a version that allowed it before the planned date.
+                jdbc.update("UPDATE care_occurrences SET status = 'COMPLETED', completed_on = DATE '2026-11-09' WHERE id = ?",
+                        futureCompleted);
                 long futureSkipped = jdbc.queryForObject(futureSession, Long.class, owner, planId,
                         "Lavagem pulada antes do previsto", "2026-11-12");
 
