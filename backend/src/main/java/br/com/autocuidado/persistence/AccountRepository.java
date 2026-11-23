@@ -67,6 +67,19 @@ public interface AccountRepository extends Repository<Account, Long> {
     void expireConfirmation(@Param("email") String email, @Param("digest") String digest,
             @Param("now") OffsetDateTime now);
 
+    @Modifying
+    @Transactional
+    @Query(value = """
+            WITH expired AS (
+                SELECT id FROM accounts
+                WHERE password_hash IS NULL AND confirmation_expires_at <= :now
+                ORDER BY confirmation_expires_at, id
+                LIMIT 1000 FOR UPDATE SKIP LOCKED
+            )
+            DELETE FROM accounts USING expired WHERE accounts.id = expired.id
+            """, nativeQuery = true)
+    int deleteExpiredRegistrations(@Param("now") OffsetDateTime now);
+
     @Query(value = """
             SELECT EXISTS (SELECT 1 FROM accounts
                 WHERE email = :email AND confirmation_digest = :digest AND confirmation_expires_at > :now)

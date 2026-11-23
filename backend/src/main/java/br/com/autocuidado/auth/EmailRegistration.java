@@ -14,10 +14,15 @@ import java.util.Locale;
 import br.com.autocuidado.persistence.AccountRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
+import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailException;
 import org.springframework.mail.MailSendException;
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -34,15 +39,18 @@ class EmailRegistration {
     private final PasswordEncoder passwords;
     private final PasswordPolicy policy;
     private final Clock clock;
+    private final ObjectProvider<TaskExecutor> mailTasks;
 
     EmailRegistration(AccountRepository accounts, ObjectProvider<MailSender> mail,
-            @Value("${app.auth.email.from:}") String from, PasswordEncoder passwords, PasswordPolicy policy, Clock clock) {
+            @Value("${app.auth.email.from:}") String from, PasswordEncoder passwords, PasswordPolicy policy, Clock clock,
+            @Qualifier("credentialMailTasks") ObjectProvider<TaskExecutor> mailTasks) {
         this.accounts = accounts;
         this.mail = mail;
         this.from = from;
         this.passwords = passwords;
         this.policy = policy;
         this.clock = clock;
+        this.mailTasks = mailTasks;
     }
 
     static String normalizeEmail(String email) {
@@ -51,7 +59,22 @@ class EmailRegistration {
         return address.substring(0, domain) + address.substring(domain).toLowerCase(Locale.ROOT);
     }
 
-    void sendCode(String email) {
+    boolean requestCode(String email) {
+        try {
+            mailTasks.getObject().execute(() -> {
+                try {
+                    sendCode(email);
+                } catch (MailException exception) {
+                    LoggerFactory.getLogger(EmailRegistration.class).warn("security_event action=registration_mail status=failed");
+                }
+            });
+            return true;
+        } catch (TaskRejectedException exception) {
+            return false;
+        }
+    }
+
+    private void sendCode(String email) {
         MailSender sender = mail.getIfAvailable();
         if (sender == null || from.isBlank()) {
             throw new MailSendException("Envio de e-mail indisponível.");
@@ -94,6 +117,11 @@ class EmailRegistration {
         policy.require(password, email);
         String hash = passwords.encode(password);
         return accounts.confirm(email, digest, now(), hash, timeZone) == 1;
+    }
+
+    @Scheduled(fixedDelay = 60_000, initialDelay = 60_000)
+    void removeExpiredRegistrations() {
+        accounts.deleteExpiredRegistrations(now());
     }
 
     private OffsetDateTime now() {

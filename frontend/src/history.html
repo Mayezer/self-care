@@ -67,7 +67,7 @@
               <app-skin-routine-steps [steps]="item.skinSteps" [title]="item.title" />
             }
             @if (item.canUndo) {
-              <button class="choice-button undo-action" type="button" [attr.aria-disabled]="undoing()"
+              <button class="choice-button undo-action" type="button" [attr.aria-disabled]="undoing() || loadingMore()"
                       [attr.aria-label]="'Desfazer ' + (item.status === 'COMPLETED' ? 'conclusão' : 'pulo') + ' de ' + item.title + ' em ' + dateLabel(item.actionDate)"
                       (click)="undo(item)"><span class="material-symbol" aria-hidden="true">undo</span> Desfazer</button>
             }
@@ -79,6 +79,14 @@
         <span class="material-symbol" aria-hidden="true">history</span>
         <p>{{ category() ? 'Nenhum cuidado concluído ou pulado nesta categoria.' : 'Você ainda não tem cuidados concluídos ou pulados.' }}</p>
       </div>
+    }
+    @if (moreFailed()) {
+      <p class="field-error" role="alert">Não foi possível carregar mais registros. Tente novamente.</p>
+    }
+    @if (nextPage() !== null) {
+      <p class="hint">Os filtros se aplicam aos registros já carregados.</p>
+      <button class="secondary preview-action history-more" type="button" [disabled]="loadingMore() || undoing()"
+              (click)="load(nextPage() ?? 0)">{{ loadingMore() ? 'Carregando…' : 'Carregar mais registros' }}</button>
     }
   </section>
 }

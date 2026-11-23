@@ -200,6 +200,48 @@ it('shows the daily message independently of week navigation and category filter
   expect(card()?.querySelector('.care-category-badge')).toBeNull();
 });
 
+it('loads history pages while keeping the server monthly totals and retries a failed page', () => {
+  const fixture = TestBed.createComponent(History);
+  fixture.componentRef.setInput('today', today);
+  const page: HTMLElement = fixture.nativeElement;
+  const records = cares.map(care => ({ ...care, actionDate: today, status: 'COMPLETED', canUndo: true }));
+  const headers = { 'X-Next-Page': '1', 'X-History-Completed': '123', 'X-History-Skipped': '2' };
+  http.expectOne('/api/history').flush(records.slice(0, 2), { headers });
+  fixture.detectChanges();
+  expect(page.querySelector('.history-metrics')?.textContent).toContain('125');
+  page.querySelector<HTMLButtonElement>('.history-more')!.click();
+  http.expectOne('/api/history?page=1').flush(null, { status: 503, statusText: 'Unavailable' });
+  fixture.detectChanges();
+  expect(page.querySelectorAll('.history-entry')).toHaveLength(2);
+  expect(page.querySelector('[role="alert"]')?.textContent).toContain('carregar mais registros');
+  page.querySelector<HTMLButtonElement>('.history-more')!.click();
+  http.expectOne('/api/history?page=1').flush(records.slice(2), {
+    headers: { 'X-History-Completed': '123', 'X-History-Skipped': '2' },
+  });
+  fixture.detectChanges();
+  expect(page.querySelectorAll('.history-entry')).toHaveLength(4);
+  expect(page.querySelector('.history-more')).toBeNull();
+  expect(page.querySelector('.history-metrics')?.textContent).toContain('125');
+});
+
+it('loads another overdue page without replacing the current week or its summary', () => {
+  const fixture = TestBed.createComponent(AgendaWeek);
+  const page: HTMLElement = fixture.nativeElement;
+  const overdue = cares.map(care => ({ ...care, date: '2026-11-08', status: 'PLANNED', canReschedule: true }));
+  const week = { today, days: [today], items: [], overdue: overdue.slice(0, 2),
+    overdueNextPage: 1, plannedCount: 123, completedCount: 2, nextCare: null };
+  http.expectOne('/api/agenda/week').flush(week);
+  http.expectOne('/api/agenda/daily-message').flush(null, { status: 204, statusText: 'No Content' });
+  fixture.detectChanges();
+  page.querySelector<HTMLButtonElement>('.overdue-more')!.click();
+  http.expectOne(`/api/agenda/week?date=${today}&overduePage=1`)
+    .flush({ ...week, overdue: overdue.slice(2), overdueNextPage: null });
+  fixture.detectChanges();
+  expect(page.querySelectorAll('.overdue-item')).toHaveLength(4);
+  expect(page.querySelector('.week-summary')?.textContent).toContain('123 cuidados planejados');
+  expect(page.querySelector('.overdue-more')).toBeNull();
+});
+
 it('keeps the category filter selected after undoing a care record from history', () => {
   const fixture = TestBed.createComponent(History);
   fixture.componentRef.setInput('today', today);

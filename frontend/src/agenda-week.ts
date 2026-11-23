@@ -43,6 +43,8 @@ interface Week {
   nextCare: AgendaItem | null;
   completedCount: number;
   careStreakDays?: number | null;
+  overdueNextPage?: number | null;
+  plannedCount?: number;
 }
 
 interface DailyMessage {
@@ -73,11 +75,13 @@ export class AgendaWeek {
   protected readonly selectedDate = signal('');
   protected readonly category = signal('');
   protected readonly loading = signal(false);
+  protected readonly overdueLoading = signal(false);
+  protected readonly overdueError = signal(false);
   protected readonly failed = signal(false);
   protected readonly dateEditor = signal<{ id: number; action: DateAction } | null>(null);
   protected readonly closingItem = signal<number | null>(null);
   protected readonly submitting = signal(false);
-  protected readonly actionsUnavailable = computed(() => this.loading() || this.submitting() || this.failed());
+  protected readonly actionsUnavailable = computed(() => this.loading() || this.overdueLoading() || this.submitting() || this.failed());
   protected readonly actionNotice = signal('');
   protected readonly actionError = signal('');
   protected readonly dateError = signal('');
@@ -110,6 +114,7 @@ export class AgendaWeek {
   protected readonly weeklyPending = computed(() => {
     const week = this.week();
     if (!week) return 0;
+    if (week.plannedCount !== undefined) return week.plannedCount;
     return week.items.filter(item => item.status === 'PLANNED').length
       + week.overdue.filter(item => week.days.includes(item.date)).length;
   });
@@ -135,7 +140,7 @@ export class AgendaWeek {
   }
 
   protected loadWeek(date: string | null, selection?: string): void {
-    if (this.loading() || this.submitting()) {
+    if (this.loading() || this.submitting() || this.overdueLoading()) {
       return;
     }
     this.closeDateEditor();
@@ -143,6 +148,7 @@ export class AgendaWeek {
     this.requestedSelection = selection;
     this.loading.set(true);
     this.failed.set(false);
+    this.overdueError.set(false);
     this.http.get<Week>('/api/agenda/week', { params: date ? { date } : {} }).pipe(
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
@@ -165,6 +171,30 @@ export class AgendaWeek {
         this.failed.set(true);
       },
     });
+  }
+
+  protected loadMoreOverdue(): void {
+    const current = this.week();
+    const page = current?.overdueNextPage;
+    if (!current || page == null || this.actionsUnavailable()) return;
+    this.overdueLoading.set(true);
+    this.overdueError.set(false);
+    this.http.get<Week>('/api/agenda/week', { params: { date: current.days[0], overduePage: page } })
+      .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+        next: result => {
+          this.overdueLoading.set(false);
+          if (result.today !== current.today) {
+            this.loadWeek(null);
+            return;
+          }
+          this.week.set({ ...current, overdue: [...current.overdue, ...result.overdue], overdueNextPage: result.overdueNextPage });
+        },
+        error: (error: HttpErrorResponse) => {
+          this.overdueLoading.set(false);
+          if (error.status === 401) this.sessionExpired.emit();
+          else this.overdueError.set(true);
+        },
+      });
   }
 
   private loadDailyMessage(today: string): void {

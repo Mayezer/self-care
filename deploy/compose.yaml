@@ -1,0 +1,90 @@
+x-database-environment: &database-environment
+  SPRING_DATASOURCE_URL: jdbc:postgresql://${AUTOCUIDADO_DB_HOST:?Informe o host do PostgreSQL}:${AUTOCUIDADO_DB_PORT:-5432}/${AUTOCUIDADO_DB_NAME:?Informe o nome do banco}?sslmode=verify-full&sslrootcert=/run/autocuidado-db-ca.pem
+
+x-database-ca: &database-ca
+  type: bind
+  source: ${AUTOCUIDADO_DB_CA_FILE:?Informe o arquivo da CA do PostgreSQL}
+  target: /run/autocuidado-db-ca.pem
+  read_only: true
+  bind:
+    create_host_path: false
+
+services:
+  web:
+    image: ${AUTOCUIDADO_WEB_IMAGE:?Informe a imagem web da revisão}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "${AUTOCUIDADO_BIND_ADDRESS:-127.0.0.1}:${AUTOCUIDADO_HTTPS_PORT:-443}:443"
+    volumes:
+      - type: bind
+        source: ./nginx.publicacao-tls.conf
+        target: /etc/nginx/autocuidado/publicacao-tls.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${AUTOCUIDADO_TLS_DIR:?Informe o diretório do certificado HTTPS}
+        target: /run/autocuidado-tls
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    image: ${AUTOCUIDADO_API_IMAGE:?Informe a imagem da API da revisão}
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *database-environment
+      SPRING_PROFILES_ACTIVE: publicacao,cloudflare-mail
+      SPRING_FLYWAY_ENABLED: "false"
+      APP_SECURITY_PROXY_HOST: web
+      SPRING_DATASOURCE_USERNAME: autocuidado_runtime
+      SPRING_DATASOURCE_PASSWORD: ${AUTOCUIDADO_DB_RUNTIME_PASSWORD:?Informe a credencial do runtime}
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "3000"
+      SPRING_MAIL_HOST: ${AUTOCUIDADO_SMTP_HOST:-smtp.mx.cloudflare.net}
+      SPRING_MAIL_PORT: ${AUTOCUIDADO_SMTP_PORT:-465}
+      SPRING_MAIL_USERNAME: ${AUTOCUIDADO_SMTP_USERNAME:-api_token}
+      SPRING_MAIL_PASSWORD: ${AUTOCUIDADO_SMTP_PASSWORD:?Informe a credencial SMTP}
+      APP_AUTH_EMAIL_FROM: ${AUTOCUIDADO_SMTP_FROM:?Informe o remetente verificado}
+      APP_AUTH_REGISTRATION_ENABLED: ${AUTOCUIDADO_REGISTRATION_ENABLED:-false}
+      APP_AUTH_MFA_KEY: ${AUTOCUIDADO_MFA_KEY:?Informe a chave de 32 bytes do autenticador}
+      APP_HAIR_PROFILE_ENABLED: "true"
+      APP_HELP_GUIDES_ENABLED: "true"
+      APP_HAIR_PRODUCTS_ENABLED: "false"
+      APP_HAIR_DIARY_ENABLED: "false"
+      APP_BILLING_ENABLED: "false"
+      APP_FORUM_ENABLED: "false"
+      APP_FORUM_PUBLIC_READING_ENABLED: "false"
+      APP_AGENDA_WEB_PUSH_ENABLED: "false"
+      APP_AGENDA_CARE_STREAK_ENABLED: "true"
+      APP_AGENDA_DAILY_MESSAGE_ENABLED: "true"
+      APP_AGENDA_REMINDERS_ENABLED: "true"
+    volumes:
+      - *database-ca
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/api/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+  migrate:
+    image: ${AUTOCUIDADO_API_IMAGE:?Informe a imagem da API da revisão}
+    environment:
+      <<: *database-environment
+      SPRING_DATASOURCE_USERNAME: autocuidado_migration
+      SPRING_DATASOURCE_PASSWORD: ${AUTOCUIDADO_DB_MIGRATION_PASSWORD:?Informe a credencial de migração}
+    volumes:
+      - *database-ca
+    command: ["java", "-jar", "autocuidado.jar", "--migrate"]

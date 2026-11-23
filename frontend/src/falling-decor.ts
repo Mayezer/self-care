@@ -10,7 +10,7 @@ const PALETTES = {
   light: ['#d292a7', '#daa468', '#aa9acc', '#8fa286'],
   pink: ['#d47c9f', '#e596b4', '#bf87ab', '#a1ae8e'],
 } as const;
-const MASK = '.site-header, .main-nav, .page-heading, .card, .info-strip, .preview-status:not(.visually-hidden), .preview > .section-heading, .help-links, .guide-back, .agenda-add, .connection:not(.visually-hidden), .new-care > form';
+const MASK = '.site-header, .main-nav, .page-heading, .card, .info-strip, .preview-status:not(.visually-hidden), .section-heading, .hint, .field-error, .agenda-feedback, .help-links, .guide-back, .agenda-add, .connection:not(.visually-hidden), .new-care-details';
 const STEP_MS = 1000 / 30;
 const PLATFORM = 42;
 

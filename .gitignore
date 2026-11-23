@@ -88,3 +88,19 @@ Thumbs.db
 /docs/
 
 AGENTS.md
+
+# Publicação: somente fontes estáticas e exemplos sem credenciais
+/deploy/*
+!/deploy/README.md
+!/deploy/release.py
+!/deploy/test_release.py
+!/deploy/compose.yaml
+!/deploy/nginx.publicacao-tls.conf
+!/deploy/publicacao.env.example
+!/deploy/release.example.json
+!/deploy/Dockerfile.cloudflare
+!/deploy/start-cloudflare.sh
+!/deploy/nginx.cloudflare.conf
+!/deploy/cloudflare.mjs
+!/deploy/test_cloudflare.mjs
+!/deploy/wrangler.example.json

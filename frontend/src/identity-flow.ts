@@ -112,13 +112,14 @@ interface Setup {
       <h2 #heading tabindex="-1">Adicione a conta ao autenticador</h2>
       <p>No aplicativo autenticador, adicione uma conta por chave de configuração. Selecione códigos baseados em tempo.</p>
       <p>Chave de configuração <code>{{ current.secret }}</code></p>
+      <p id="identity-activate-hint">Depois de adicionar a conta, digite abaixo os 6 dígitos que aparecem no aplicativo autenticador do seu celular.</p>
       <p>Guarde esta chave de recuperação em local seguro. Ela permite configurar outro autenticador se você perder o acesso ao atual.</p>
       <p>Chave de recuperação <code>{{ current.recovery }}</code></p>
       <form method="post" (submit)="$event.preventDefault(); activate(code.value, $event); code.value = ''">
         <div class="field">
           <label for="identity-activate-code">Código do novo autenticador</label>
           <input #code id="identity-activate-code" name="factor" inputmode="numeric" autocomplete="one-time-code"
-                 required pattern="[0-9]{6}" maxlength="6">
+                 aria-describedby="identity-activate-hint" required pattern="[0-9]{6}" maxlength="6">
         </div>
         @if (step() === 'reset-activate') {
           <div class="field">

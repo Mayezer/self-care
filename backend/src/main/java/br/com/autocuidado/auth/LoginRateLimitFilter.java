@@ -8,6 +8,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -30,12 +31,23 @@ final class LoginRateLimitFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        if (request.getQueryString() != null) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+        String contentType = request.getContentType();
+        if (contentType == null || !MediaType.APPLICATION_FORM_URLENCODED_VALUE.equalsIgnoreCase(
+                contentType.split(";", 2)[0].strip())) {
+            response.setStatus(HttpServletResponse.SC_UNSUPPORTED_MEDIA_TYPE);
+            return;
+        }
         String login = AccountService.normalizeIdentifier(Objects.toString(request.getParameter("username"), "").trim());
-        if (login.length() > 254) {
+        String password = request.getParameter("password");
+        if (login.isEmpty() || login.length() > 254 || password == null || password.isEmpty() || password.length() > 1024) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
-        if (!limits.tryAcquire(login)) {
+        if (!limits.tryAcquire("login:" + login)) {
             response.setStatus(429);
             response.setHeader(HttpHeaders.RETRY_AFTER, Integer.toString(LoginRateLimit.WINDOW_SECONDS));
             return;

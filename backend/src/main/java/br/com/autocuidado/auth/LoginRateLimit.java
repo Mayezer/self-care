@@ -21,6 +21,10 @@ public class LoginRateLimit {
     }
 
     boolean tryAcquire(String identifier) {
+        return tryAcquire(identifier, MAX_ATTEMPTS, WINDOW_SECONDS);
+    }
+
+    public boolean tryAcquire(String identifier, int maxAttempts, int windowSeconds) {
         return jdbc.update("""
                 INSERT INTO login_rate_limits AS limits (identifier_hash, expires_at, attempts)
                 VALUES (?, statement_timestamp() + make_interval(secs => ?), 1)
@@ -29,7 +33,7 @@ public class LoginRateLimit {
                     expires_at = CASE WHEN limits.expires_at <= statement_timestamp()
                         THEN excluded.expires_at ELSE limits.expires_at END
                 WHERE limits.expires_at <= statement_timestamp() OR limits.attempts < ?
-                """, identifierHash(identifier), WINDOW_SECONDS, MAX_ATTEMPTS) == 1;
+                """, identifierHash(identifier), windowSeconds, maxAttempts) == 1;
     }
 
     @Scheduled(fixedDelay = 60_000)

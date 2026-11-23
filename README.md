@@ -87,7 +87,7 @@ Generate a preview, customize a treatment stage, and select **Entrar para salvar
 - To verify FSD-04A, run `APP_AUTH_MFA_REQUIRED=false ./gradlew postgresqlTest` in `backend/` with the `SPRING_DATASOURCE_*` variables pointing to an empty PostgreSQL database dedicated to that run. The suite signs in to test accounts using passwords. It applies the migrations, writes test data, verifies the date constraint for each plan, and restarts the app to validate the schema and read the data back. Use a fresh, empty database for each run.
 - In `frontend/`, run `npm ci`, `npm run build`, and `npm test`.
 
-GitHub Actions scans the Git history with Gitleaks, audits npm dependencies, builds Angular and Spring Boot, and runs tests, including integration tests against a disposable PostgreSQL database. Deployment is still in preparation. [CI workflow](.github/workflows/ci.yml)
+GitHub Actions scans the Git history with Gitleaks, audits npm dependencies, builds Angular and Spring Boot, and runs tests, including integration tests against a disposable PostgreSQL database, simulated Compose deployment and rollback tests using Python's standard library, and Cloudflare origin and lifecycle tests using Node. The manual release workflow uses Docker Compose on a prepared host. The deployment guide also documents the Cloudflare Containers candidate and its remaining provider checks. [CI workflow](.github/workflows/ci.yml) · [Deployment and rollback guide](deploy/README.md)
 
 ## Test hair profile persistence (E2-04)
 

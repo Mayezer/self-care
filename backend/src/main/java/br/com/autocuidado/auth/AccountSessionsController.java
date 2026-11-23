@@ -59,7 +59,7 @@ class AccountSessionsController {
                 || input.session() == null || !input.session().matches("all|[0-9a-f]{64}")) {
             return ResponseEntity.badRequest().build();
         }
-        if (!rateLimit.tryAcquire(account.getUsername())) {
+        if (!rateLimit.tryAcquire("session-revoke:" + account.accountId())) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .header("Retry-After", Integer.toString(LoginRateLimit.WINDOW_SECONDS)).build();
         }

@@ -33,6 +33,9 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -43,8 +46,11 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -71,7 +77,7 @@ class AccountAccessTest {
     @Autowired
     private MockMvc mvc;
 
-    @Autowired
+    @MockitoSpyBean
     private PasswordEncoder passwords;
 
     @Autowired
@@ -95,10 +101,14 @@ class AccountAccessTest {
     @MockitoBean
     private LoginRateLimit loginRateLimit;
 
+    @MockitoBean(name = "credentialMailTasks")
+    private TaskExecutor mailTasks;
+
     @BeforeEach
     void allowLoginAttempts() {
         clock.now = TEST_TIME;
         when(loginRateLimit.tryAcquire(anyString())).thenReturn(true);
+        when(loginRateLimit.tryAcquire(anyString(), anyInt(), anyInt())).thenReturn(true);
     }
 
     @Test
@@ -125,20 +135,34 @@ class AccountAccessTest {
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/auth/login").param("username", EMAIL).param("password", PASSWORD))
                 .andExpect(status().isForbidden());
-        verifyNoInteractions(accounts, loginRateLimit);
+        verifyNoInteractions(accounts);
     }
 
     @Test
     void returnsRateLimitBeforeLookingUpTheAccount() throws Exception {
         var session = new MockHttpSession();
-        when(loginRateLimit.tryAcquire(EMAIL)).thenReturn(false);
+        when(loginRateLimit.tryAcquire("login:" + EMAIL)).thenReturn(false);
 
         var token = csrf(session);
         mvc.perform(post("/api/auth/login").session(session).header(token.name(), token.value())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .param("username", "conta@EXAMPLE.TEST").param("password", PASSWORD))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().string("Retry-After", "300"));
 
+        verifyNoInteractions(accounts);
+    }
+
+    @Test
+    void limitsLoginCredentialsToTheFormBody() throws Exception {
+        var session = new MockHttpSession();
+        var token = csrf(session);
+        mvc.perform(post("/api/auth/login").session(session).header(token.name(), token.value())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED).queryParam("username", EMAIL))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/auth/login").session(session).header(token.name(), token.value())
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnsupportedMediaType());
         verifyNoInteractions(accounts);
     }
 
@@ -154,6 +178,10 @@ class AccountAccessTest {
         var response = submit("register", session, csrf, "{\"email\":\"conta@EXAMPLE.TEST\"}")
                 .andExpect(status().isAccepted()).andReturn();
         assertEquals("", response.getResponse().getContentAsString());
+        verifyNoInteractions(accounts, mail);
+        var queued = ArgumentCaptor.forClass(Runnable.class);
+        verify(mailTasks).execute(queued.capture());
+        queued.getValue().run();
         var mailMessage = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mail).send(mailMessage.capture());
         assertEquals(EMAIL, mailMessage.getValue().getTo()[0]);
@@ -163,6 +191,38 @@ class AccountAccessTest {
                 .digest(code.getBytes(StandardCharsets.US_ASCII)));
         verify(accounts).issueConfirmation(eq(EMAIL), eq(TIME_ZONE), eq(digest), any(), any());
         login(session, csrf, PASSWORD).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void usesTheSamePasswordWorkAndFailureResponseForUnknownAndExistingAccounts() throws Exception {
+        givenConfirmedAccount(TIME_ZONE);
+        var session = new MockHttpSession();
+        var token = csrf(session);
+        String wrong = "Uma senha incorreta e longa!";
+        var existing = login(session, token, wrong).andExpect(status().isUnauthorized()).andReturn().getResponse();
+        var missing = mvc.perform(post("/api/auth/login").session(session).header(token.name(), token.value())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("username", "inexistente@example.test").param("password", wrong))
+                .andExpect(status().isUnauthorized()).andReturn().getResponse();
+        assertEquals(existing.getContentAsString(), missing.getContentAsString());
+        assertEquals(existing.getHeader("Cache-Control"), missing.getHeader("Cache-Control"));
+        var hashes = ArgumentCaptor.forClass(String.class);
+        verify(passwords, times(2)).matches(eq(wrong), hashes.capture());
+        assertTrue(hashes.getAllValues().stream().allMatch(hash -> hash.startsWith("{pbkdf2-sha256-600000}")));
+    }
+
+    @Test
+    void registrationQueuesEveryValidAddressAndQueueSaturationDoesNotRevealAccounts() throws Exception {
+        var session = new MockHttpSession();
+        var token = csrf(session);
+        submit("register", session, token, "{\"email\":\"known@example.test\"}").andExpect(status().isAccepted());
+        submit("register", session, token, "{\"email\":\"unknown@example.test\"}").andExpect(status().isAccepted());
+        verify(mailTasks, times(2)).execute(any(Runnable.class));
+        verifyNoInteractions(accounts, mail);
+        doThrow(new TaskRejectedException("Queue full")).when(mailTasks).execute(any(Runnable.class));
+        submit("register", session, token, "{\"email\":\"known@example.test\"}").andExpect(status().isServiceUnavailable());
+        submit("register", session, token, "{\"email\":\"unknown@example.test\"}").andExpect(status().isServiceUnavailable());
+        verifyNoInteractions(accounts, mail);
     }
 
     @Test
@@ -334,6 +394,7 @@ class AccountAccessTest {
         var session = new MockHttpSession();
         var token = csrf(session);
         mvc.perform(post("/api/auth/login").session(session).header(token.name(), token.value())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .param("username", email).param("password", PASSWORD)).andExpect(status().isNoContent());
         return session;
     }
@@ -351,6 +412,7 @@ class AccountAccessTest {
 
     private ResultActions login(MockHttpSession session, CsrfHeader csrf, String password) throws Exception {
         return mvc.perform(post("/api/auth/login").session(session).header(csrf.name(), csrf.value())
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .with(request -> {
                     request.setRequestedSessionId(session.getId());
                     return request;

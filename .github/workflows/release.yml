@@ -1,0 +1,114 @@
+name: Publicação
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operação no host
+        type: choice
+        options: [deploy, rollback]
+        required: true
+      target:
+        description: Ambiente do GitHub
+        type: choice
+        options: [homologacao, producao]
+        required: true
+      public_site_origin:
+        description: Origem HTTPS canônica para o build de deploy
+        type: string
+      public_site_guides:
+        description: Publicar os guias editoriais no sitemap
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main' && inputs.operation == 'deploy'
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      web: ${{ steps.images.outputs.web }}
+      api: ${{ steps.images.outputs.api }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Construir e registrar as imagens por digest
+        id: images
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUBLIC_SITE_ORIGIN: ${{ inputs.public_site_origin }}
+          PUBLIC_SITE_GUIDES: ${{ inputs.public_site_guides }}
+        run: |
+          : "${PUBLIC_SITE_ORIGIN:?Informe a origem HTTPS canônica}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          registry="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tag="$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          for service in web api; do
+            if [[ $service == web ]]; then
+              context=frontend
+              args=(--build-arg PUBLIC_SITE_ORIGIN --build-arg PUBLIC_SITE_GUIDES)
+            else
+              context=backend
+              args=()
+            fi
+            image="$registry-$service"
+            metadata="$RUNNER_TEMP/$service-build.json"
+            docker buildx build --push --metadata-file "$metadata" --tag "$image:$tag" \
+              --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+              --label "org.opencontainers.image.revision=$GITHUB_SHA" "${args[@]}" "$context"
+            digest=$(jq -er '."containerimage.digest"' "$metadata")
+            [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s=%s@%s\n' "$service" "$image" "$digest" >> "$GITHUB_OUTPUT"
+          done
+
+  apply:
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (inputs.operation == 'rollback' || needs.package.result == 'success') }}
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions: {}
+    environment: ${{ inputs.target }}
+    steps:
+      - name: Aplicar a revisão no host
+        shell: bash
+        env:
+          OPERATION: ${{ inputs.operation }}
+          WEB_IMAGE: ${{ needs.package.outputs.web }}
+          API_IMAGE: ${{ needs.package.outputs.api }}
+          SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ vars.DEPLOY_SSH_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          [[ $SSH_HOST =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ && $SSH_USER =~ ^[a-z_][a-z0-9_-]*$ ]]
+          : "${SSH_KEY:?Configure DEPLOY_SSH_KEY}" "${SSH_KNOWN_HOSTS:?Configure DEPLOY_SSH_KNOWN_HOSTS}"
+          umask 077
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          command=(python3 /opt/autocuidado/deploy/release.py "$OPERATION")
+          if [[ $OPERATION == deploy ]]; then
+            image_pattern='^ghcr\.io/[a-z0-9._-]+/[a-z0-9._-]+@sha256:[0-9a-f]{64}$'
+            [[ $WEB_IMAGE =~ $image_pattern && $API_IMAGE =~ $image_pattern ]]
+            command+=("$WEB_IMAGE" "$API_IMAGE")
+          fi
+          ssh -T -i "$ssh_dir/key" -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$ssh_dir/known_hosts" \
+            -- "$SSH_USER@$SSH_HOST" "${command[@]}"

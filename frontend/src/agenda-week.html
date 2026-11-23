@@ -119,7 +119,7 @@
         }
       </section>
 
-      @if (overdueItems().length) {
+      @if (overdueItems().length || current.overdueNextPage) {
         <section class="overdue-panel" aria-labelledby="overdue-title">
           <h2 id="overdue-title"><span class="material-symbol" aria-hidden="true">info</span> Cuidados pendentes</h2>
           <ul class="sessions" role="list">
@@ -141,6 +141,14 @@
               </li>
             }
           </ul>
+          @if (overdueError()) {
+            <p class="field-error" role="alert">Não foi possível carregar mais pendências. Tente novamente.</p>
+          }
+          @if (current.overdueNextPage) {
+            <p class="hint">Os filtros se aplicam às pendências já carregadas.</p>
+            <button class="secondary preview-action overdue-more" type="button" [disabled]="actionsUnavailable()"
+                    (click)="loadMoreOverdue()">{{ overdueLoading() ? 'Carregando…' : 'Carregar mais pendências' }}</button>
+          }
           <p class="hint overdue-note">Sem cobranças: conclua, pule ou reagende quando for melhor.</p>
         </section>
       }

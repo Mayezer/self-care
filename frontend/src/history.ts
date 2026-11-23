@@ -31,12 +31,16 @@ export class History {
   private readonly feedback = viewChild.required<ElementRef<HTMLParagraphElement>>('feedback');
   private readonly errorFeedback = viewChild<ElementRef<HTMLParagraphElement>>('errorFeedback');
   private readonly records = signal<HistoryItem[]>([]);
+  private readonly monthCounts = signal<{ completed: number; skipped: number } | null>(null);
 
   readonly recorded = input(false);
   readonly today = input.required<string>();
   readonly sessionExpired = output();
   protected readonly category = signal('');
   protected readonly loading = signal(false);
+  protected readonly loadingMore = signal(false);
+  protected readonly moreFailed = signal(false);
+  protected readonly nextPage = signal<number | null>(null);
   protected readonly failed = signal(false);
   protected readonly undoing = signal(false);
   protected readonly notice = signal<string | null>(null);
@@ -53,6 +57,8 @@ export class History {
   protected readonly visibleRecords = computed(() =>
     this.records().filter(item => !this.category() || item.category === this.category()));
   protected readonly monthly = computed(() => {
+    const counts = this.monthCounts();
+    if (counts) return { ...counts, total: counts.completed + counts.skipped };
     const prefix = this.today().slice(0, 7);
     const entries = this.records().filter(item => item.actionDate.startsWith(prefix));
     const completed = entries.filter(item => item.status === 'COMPLETED').length;
@@ -68,27 +74,41 @@ export class History {
     });
   }
 
-  protected load(): void {
-    this.loading.set(true);
-    this.failed.set(false);
-    this.http.get<HistoryItem[]>('/api/history').pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: records => {
-        this.records.set(records);
+  protected load(page = 0): void {
+    if (this.loading() || this.loadingMore()) return;
+    this.loading.set(page === 0);
+    this.loadingMore.set(page > 0);
+    this.moreFailed.set(false);
+    if (page === 0) this.failed.set(false);
+    this.http.get<HistoryItem[]>(page ? `/api/history?page=${page}` : '/api/history', { observe: 'response' })
+      .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: response => {
+        const records = response.body ?? [];
+        this.records.set(page ? [...this.records(), ...records] : records);
+        const next = response.headers.get('X-Next-Page');
+        this.nextPage.set(next === null ? null : Number(next));
+        const completed = response.headers.get('X-History-Completed');
+        const skipped = response.headers.get('X-History-Skipped');
+        this.monthCounts.set(completed === null || skipped === null ? null
+          : { completed: Number(completed), skipped: Number(skipped) });
         this.loading.set(false);
+        this.loadingMore.set(false);
       },
       error: (error: HttpErrorResponse) => {
         this.loading.set(false);
+        this.loadingMore.set(false);
         if (error.status === 401) {
           this.sessionExpired.emit();
         } else {
-          this.failed.set(true);
+          if (page) this.moreFailed.set(true);
+          else this.failed.set(true);
         }
       },
     });
   }
 
   protected undo(item: HistoryItem): void {
-    if (this.undoing() || !item.canUndo) {
+    if (this.undoing() || this.loadingMore() || !item.canUndo) {
       return;
     }
     this.notice.set('');

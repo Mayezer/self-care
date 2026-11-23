@@ -84,6 +84,7 @@ public class SecurityConfiguration {
             ObjectProvider<MfaLoginController> mfaLogin, ObjectProvider<AuthSecrets> secrets,
             ObjectProvider<AccountRepository> accounts,
             @Value("${app.auth.registration-enabled:true}") boolean registrationEnabled,
+            @Value("${app.security.proxy-host:}") String trustedProxyHost,
             @Value("${app.auth.mfa-required:true}") boolean mfaRequired) throws Exception {
         if (mfaRequired) {
             secrets.getObject().requireKey();
@@ -93,7 +94,7 @@ public class SecurityConfiguration {
         var accessDenied = new AccessDeniedHandlerImpl();
         return http
                 .authorizeHttpRequests(requests -> requests
-                        .requestMatchers(GET, "/api/health", "/api/auth/csrf", "/api/agenda/web-push/delivery",
+                        .requestMatchers(GET, "/api/health", "/api/ready", "/api/auth/csrf", "/api/agenda/web-push/delivery",
                                 "/api/help/features").permitAll()
                         .requestMatchers(GET, PUBLIC_FORUM_READS).permitAll()
                         .requestMatchers(HEAD, PUBLIC_FORUM_READS).permitAll()
@@ -108,6 +109,8 @@ public class SecurityConfiguration {
                 .csrf(csrf -> csrf.csrfTokenRepository(loginSessions.csrf)
                         .ignoringRequestMatchers(pathPattern(POST, PREVIEW), pathPattern(POST, STRIPE_WEBHOOK)))
                 .addFilterBefore(sessionLifetime, CsrfFilter.class)
+                .addFilterBefore(new SecurityEventsFilter(), SessionLifetimeFilter.class)
+                .addFilterAfter(new RequestRateLimitFilter(loginRateLimit, trustedProxyHost), SessionLifetimeFilter.class)
                 .addFilterBefore(new LoginRateLimitFilter(loginRateLimit), UsernamePasswordAuthenticationFilter.class)
                 .requestCache(AbstractHttpConfigurer::disable)
                 .exceptionHandling(errors -> errors

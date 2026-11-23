@@ -4,6 +4,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.Set;
 
 import br.com.autocuidado.SelfCareApplication;
@@ -40,6 +41,7 @@ class PostgresqlMigrationTest {
             var jdbc = application.getBean(JdbcTemplate.class);
             assertMigrationsAppliedOnce(jdbc);
             assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM accounts WHERE username = 'legacy_test'", Integer.class));
+            verifyExpiredRegistrationCleanup(application.getBean(AccountRepository.class), jdbc);
 
             var factory = application.getBean(EntityManagerFactory.class);
             var saved = factory.callInTransaction(manager -> {
@@ -116,11 +118,31 @@ class PostgresqlMigrationTest {
     }
 
     private static void assertMigrationsAppliedOnce(JdbcTemplate jdbc) {
-        for (String version : Set.of("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20")) {
+        for (int version = 1; version <= 23; version++) {
             assertEquals(1, jdbc.queryForObject("""
                     SELECT count(*) FROM flyway_schema_history WHERE version = ? AND success
-                    """, Integer.class, version));
+                    """, Integer.class, Integer.toString(version)));
         }
+    }
+
+    private static void verifyExpiredRegistrationCleanup(AccountRepository accounts, JdbcTemplate jdbc) {
+        var now = OffsetDateTime.now();
+        String expired = "expired@example.test";
+        String pending = "pending@example.test";
+        String confirmed = "confirmed@example.test";
+        String digest = "a".repeat(64);
+        assertEquals(1, accounts.issueConfirmation(expired, "UTC", digest, now, now));
+        assertEquals(1, accounts.issueConfirmation(pending, "UTC", digest, now.plusMinutes(5), now));
+        assertEquals(1, accounts.issueConfirmation(confirmed, "UTC", digest, now.plusMinutes(5), now));
+        assertEquals(1, accounts.confirm(confirmed, digest, now, "test-hash", "UTC"));
+
+        assertEquals(1, accounts.deleteExpiredRegistrations(now));
+        assertEquals(0, accounts.deleteExpiredRegistrations(now));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM accounts WHERE email = ?", Integer.class, expired));
+        assertTrue(accounts.hasValidConfirmation(pending, digest, now));
+        assertTrue(accounts.loginByEmail(confirmed).isPresent());
+        assertEquals(1, accounts.issueConfirmation(expired, "UTC", digest, now.plusMinutes(5), now));
+        assertTrue(accounts.hasValidConfirmation(expired, digest, now));
     }
 
     private static RecurringPlan hairPlan(Long accountId) {

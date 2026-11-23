@@ -1,0 +1,5 @@
+**
+!deploy/
+!deploy/Dockerfile.cloudflare
+!deploy/start-cloudflare.sh
+!deploy/nginx.cloudflare.conf

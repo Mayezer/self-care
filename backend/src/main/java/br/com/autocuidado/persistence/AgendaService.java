@@ -26,6 +26,8 @@ import static java.time.temporal.TemporalAdjusters.previousOrSame;
 @Service
 public class AgendaService {
 
+    public static final int PAGE_SIZE = 50;
+
     private static final LocalDate MIN_DATE = LocalDate.of(1, 1, 1);
     private static final LocalDate MAX_DATE = LocalDate.of(9999, 12, 31);
     private static final String AGENDA_VISIBILITY = """
@@ -187,7 +189,7 @@ public class AgendaService {
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
-    public Week loadWeek(AccountPrincipal account, LocalDate date) {
+    public Week loadWeek(AccountPrincipal account, LocalDate date, int overduePage) {
         LocalDate today = today(account);
         LocalDate start = (date == null ? today : date).with(previousOrSame(MONDAY));
         LocalDate end = start.plusDays(6);
@@ -207,7 +209,10 @@ public class AgendaService {
                 AND o.status = PLANNED AND o.plannedDate < :today
                 """ + ORDER_BY_DATE, Item.class)
                 .setParameter("accountId", accountId).setParameter("today", today)
+                .setFirstResult(overduePage * PAGE_SIZE).setMaxResults(PAGE_SIZE + 1)
                 .getResultList();
+        Integer overdueNextPage = overdue.size() > PAGE_SIZE ? overduePage + 1 : null;
+        overdue = overdue.stream().limit(PAGE_SIZE).toList();
         var nextCare = entityManager.createQuery(VISIBLE_OCCURRENCES + """
                 AND o.status = PLANNED AND o.plannedDate >= :today
                 """ + ORDER_BY_DATE, Item.class)
@@ -220,6 +225,12 @@ public class AgendaService {
                 .setParameter("accountId", accountId)
                 .setParameter("start", start).setParameter("end", end)
                 .getSingleResult();
+        long plannedCount = entityManager.createQuery("""
+                SELECT COUNT(o) FROM CareOccurrence o
+                WHERE o.accountId = :accountId AND o.status = PLANNED AND o.plannedDate BETWEEN :start AND :end
+                """ + AGENDA_VISIBILITY, Long.class)
+                .setParameter("accountId", accountId).setParameter("start", start).setParameter("end", end)
+                .getSingleResult();
 
         // Derive the in-agenda channel from the same snapshot as the occurrence state.
         var preferences = reminders.preferences(accountId);
@@ -230,32 +241,30 @@ public class AgendaService {
         return new Week(today, start.datesUntil(end.plusDays(1)).toList(),
                 start.isAfter(MIN_DATE) ? start.minusWeeks(1) : null,
                 end.isBefore(MAX_DATE) ? start.plusWeeks(1) : null,
-                items, overdue, nextCare, completedCount, careStreakEnabled ? countCareStreak(accountId, today) : null);
+                items, overdue, nextCare, completedCount, careStreakEnabled ? countCareStreak(accountId, today) : null,
+                overdueNextPage, plannedCount);
     }
 
     private int countCareStreak(long accountId, LocalDate today) {
-        var dates = entityManager.createQuery("""
-                SELECT DISTINCT o.completedOn FROM CareOccurrence o
-                WHERE o.accountId = :accountId AND o.status = COMPLETED AND o.completedOn <= :today
-                ORDER BY o.completedOn DESC
-                """, LocalDate.class)
+        return ((Number) entityManager.createNativeQuery("""
+                WITH days AS (
+                    SELECT DISTINCT completed_on AS day FROM care_occurrences
+                    WHERE account_id = :accountId AND status = 'COMPLETED' AND completed_on <= :today
+                ), ranked AS (
+                    SELECT day, row_number() OVER (ORDER BY day DESC) AS position FROM days
+                ), latest AS (
+                    SELECT max(day) AS day FROM days WHERE day >= CAST(:today AS date) - 1
+                )
+                SELECT count(*) FROM ranked CROSS JOIN latest
+                WHERE ranked.day = latest.day - (CAST(ranked.position AS integer) - 1)
+                """, Long.class)
                 .setParameter("accountId", accountId).setParameter("today", today)
-                .getResultList();
-        LocalDate expected = !dates.isEmpty() && dates.getFirst().equals(today) ? today : today.minusDays(1);
-        int streak = 0;
-        for (LocalDate date : dates) {
-            if (!date.equals(expected)) {
-                break;
-            }
-            streak++;
-            expected = expected.minusDays(1);
-        }
-        return streak;
+                .getSingleResult()).intValue();
     }
 
-    @Transactional(readOnly = true)
-    public List<HistoryItem> loadHistory(AccountPrincipal account) {
-        return entityManager.createQuery("""
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public HistoryPage loadHistory(AccountPrincipal account, int page) {
+        var items = entityManager.createQuery("""
                 SELECT o.id, o.title, o.category, o.hairStage, COALESCE(o.period, p.period),
                        o.status, COALESCE(o.completedOn, o.skippedOn),
                        CASE WHEN o.plannedDate IS NOT NULL THEN true ELSE false END,
@@ -265,7 +274,24 @@ public class AgendaService {
                 ORDER BY COALESCE(o.completedOn, o.skippedOn) DESC, o.id DESC
                 """, HistoryItem.class)
                 .setParameter("accountId", account.accountId())
+                .setFirstResult(page * PAGE_SIZE).setMaxResults(PAGE_SIZE + 1)
                 .getResultList();
+        LocalDate month = today(account).withDayOfMonth(1);
+        var counts = entityManager.createQuery("""
+                SELECT o.status, COUNT(o) FROM CareOccurrence o WHERE o.accountId = :accountId
+                AND o.status IN (COMPLETED, SKIPPED) AND COALESCE(o.completedOn, o.skippedOn) >= :start
+                AND COALESCE(o.completedOn, o.skippedOn) < :end GROUP BY o.status
+                """, Object[].class)
+                .setParameter("accountId", account.accountId()).setParameter("start", month)
+                .setParameter("end", month.plusMonths(1)).getResultList();
+        long completed = 0;
+        long skipped = 0;
+        for (var count : counts) {
+            if (count[0] == OccurrenceStatus.COMPLETED) completed = (Long) count[1];
+            else skipped = (Long) count[1];
+        }
+        return new HistoryPage(items.stream().limit(PAGE_SIZE).toList(),
+                items.size() > PAGE_SIZE ? page + 1 : null, completed, skipped);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -409,7 +435,9 @@ public class AgendaService {
 
     public record Week(LocalDate today, List<LocalDate> days, LocalDate previousWeek, LocalDate nextWeek,
                        List<Item> items, List<Item> overdue, Item nextCare, long completedCount,
-                       Integer careStreakDays) {}
+                       Integer careStreakDays, Integer overdueNextPage, long plannedCount) {}
+
+    public record HistoryPage(List<HistoryItem> items, Integer nextPage, long completed, long skipped) {}
 
     public record HistoryItem(Long id, String title, CareCategory category, HairStage stage, CarePeriod period,
                               OccurrenceStatus status, LocalDate actionDate, boolean canUndo,

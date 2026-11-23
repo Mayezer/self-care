@@ -1723,6 +1723,65 @@ class AgendaPostgresqlTest {
     }
 
     @Test
+    void boundsHistoryAndOverduePagesWithoutLosingTotalsOrLeakingAnotherAccount() throws Exception {
+        String database = System.getenv("SPRING_DATASOURCE_URL");
+        assertNotNull(database);
+        String schema = "pages_" + UUID.randomUUID().toString().replace("-", "");
+        String url = database + (database.contains("?") ? "&" : "?") + "currentSchema=" + schema;
+        try (var connection = DriverManager.getConnection(database, System.getenv("SPRING_DATASOURCE_USERNAME"),
+                System.getenv("SPRING_DATASOURCE_PASSWORD")); var statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA " + schema);
+            try (var app = new SpringApplicationBuilder(SelfCareApplication.class, FixedClock.class)
+                    .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url)) {
+                var jdbc = app.getBean(JdbcTemplate.class);
+                String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
+                long owner = insertAccount(jdbc, "page_owner", hash, "UTC");
+                long other = insertAccount(jdbc, "page_other", hash, "UTC");
+                var today = java.time.LocalDate.now(app.getBean(Clock.class));
+                for (long account : new long[] {owner, other}) {
+                    jdbc.update("""
+                            INSERT INTO care_occurrences (account_id, category, title, status, completed_on)
+                            SELECT ?, 'MAKEUP', 'Synthetic history ' || n, 'COMPLETED', ?::date
+                            FROM generate_series(1, 123) n
+                            """, account, today);
+                    jdbc.update("""
+                            INSERT INTO care_occurrences (account_id, category, title, status, planned_date)
+                            SELECT ?, 'MAKEUP', 'Synthetic overdue ' || n, 'PLANNED', ?::date
+                            FROM generate_series(1, 123) n
+                            """, account, today.minusDays(1));
+                }
+                var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
+                var session = new Session(origin);
+                session.login("page_owner");
+                var ids = new java.util.HashSet<Long>();
+                for (int page = 0; page < 3; page++) {
+                    var response = session.client.send(session.request(HISTORY + "?page=" + page).GET().build(),
+                            HttpResponse.BodyHandlers.ofString());
+                    assertEquals(200, response.statusCode());
+                    var items = JSON.readTree(response.body());
+                    assertEquals(page < 2 ? 50 : 23, items.size());
+                    assertEquals("123", response.headers().firstValue("X-History-Completed").orElseThrow());
+                    assertEquals(page < 2 ? Integer.toString(page + 1) : null,
+                            response.headers().firstValue("X-Next-Page").orElse(null));
+                    items.forEach(item -> assertTrue(ids.add(item.path("id").asLong())));
+                    var week = session.week("?overduePage=" + page);
+                    assertEquals(page < 2 ? 50 : 23, week.path("overdue").size());
+                    if (page < 2) assertEquals(page + 1, week.path("overdueNextPage").asInt());
+                    else assertTrue(week.path("overdueNextPage").isNull());
+                }
+                assertEquals(123, ids.size());
+                Long foreignId = jdbc.queryForObject("SELECT min(id) FROM care_occurrences WHERE account_id = ?", Long.class, other);
+                assertTrue(ids.stream().allMatch(id -> id < foreignId));
+                session.get(HISTORY + "?page=-1", 400);
+                session.get(HISTORY + "?page=10001", 400);
+                session.get(AGENDA + "?overduePage=-1", 400);
+            } finally {
+                statement.execute("DROP SCHEMA " + schema + " CASCADE");
+            }
+        }
+    }
+
+    @Test
     void listsOwnedHistoryByActionDateAndRemovesUndoneCare() throws Exception {
         String database = System.getenv("SPRING_DATASOURCE_URL");
         assertNotNull(database, "Configure um banco PostgreSQL exclusivo para o teste.");

@@ -13,10 +13,8 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -25,6 +23,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import static br.com.autocuidado.push.WebPushTransport.State.CANCELED;
 
 @Component
+@ConditionalOnProperty(name = "app.agenda.web-push-enabled", havingValue = "true")
 class WebPushDispatcher {
     private static final Logger LOG = LoggerFactory.getLogger(WebPushDispatcher.class);
     private static final Duration DELIVERY_WINDOW = Duration.ofMinutes(10);
@@ -156,9 +155,4 @@ class WebPushDispatcher {
 
     private record Reminder(long occurrenceId, long subscriptionId, String endpoint, LocalDate date,
                             LocalTime time, ZoneId zone, Instant eligibleSince) {}
-
-    @Configuration(proxyBeanMethods = false)
-    @ConditionalOnProperty(name = "app.agenda.web-push-enabled", havingValue = "true")
-    @EnableScheduling
-    static class Scheduling {}
 }

@@ -1,0 +1,7 @@
+{
+  "project": "autocuidado-publicacao",
+  "env_file": "/etc/autocuidado/publicacao.env",
+  "state_dir": "/var/lib/autocuidado/release",
+  "smoke_origin": "https://autocuidado.example",
+  "smoke_address": "127.0.0.1"
+}

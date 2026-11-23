@@ -81,8 +81,8 @@ class AccountController {
         if (email == null) {
             return fieldError(HttpStatus.BAD_REQUEST, "email", "Informe um endereço de e-mail válido.");
         }
-        registration.sendCode(email);
-        return ResponseEntity.accepted().build();
+        return registration.requestCode(email) ? ResponseEntity.accepted().build()
+                : ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build();
     }
 
     @PostMapping("/api/auth/confirm")

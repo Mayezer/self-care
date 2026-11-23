@@ -44,17 +44,30 @@ class AgendaController {
 
     @GetMapping("/api/agenda/week")
     ResponseEntity<?> week(@AuthenticationPrincipal AccountPrincipal account,
-                           @RequestParam(required = false) String date) {
+                           @RequestParam(required = false) String date,
+                           @RequestParam(defaultValue = "0") int overduePage) {
         LocalDate selectedDate = parseDate(date);
         if (date != null && selectedDate == null) {
             return invalidField("date", "Informe uma data válida.");
         }
-        return ResponseEntity.ok(agenda.loadWeek(account, selectedDate));
+        if (overduePage < 0 || overduePage > 10_000) {
+            return invalidField("overduePage", "Informe uma página válida.");
+        }
+        return ResponseEntity.ok(agenda.loadWeek(account, selectedDate, overduePage));
     }
 
     @GetMapping("/api/history")
-    List<AgendaService.HistoryItem> history(@AuthenticationPrincipal AccountPrincipal account) {
-        return agenda.loadHistory(account);
+    ResponseEntity<?> history(@AuthenticationPrincipal AccountPrincipal account,
+                              @RequestParam(defaultValue = "0") int page) {
+        if (page < 0 || page > 10_000) {
+            return invalidField("page", "Informe uma página válida.");
+        }
+        var result = agenda.loadHistory(account, page);
+        var response = ResponseEntity.ok()
+                .header("X-History-Completed", Long.toString(result.completed()))
+                .header("X-History-Skipped", Long.toString(result.skipped()));
+        if (result.nextPage() != null) response.header("X-Next-Page", result.nextPage().toString());
+        return response.body(result.items());
     }
 
     @PostMapping("/api/occurrences/skin")

@@ -1,0 +1,55 @@
+{
+  "name": "agenda-autocuidado-homologacao",
+  "main": "cloudflare.mjs",
+  "compatibility_date": "2026-11-18",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "vars": {
+    "PUBLIC_SITE_ORIGIN": "https://agenda-autocuidado.mayezer.com",
+    "AUTOCUIDADO_SMTP_FROM": ""
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "invocation_logs": false
+    },
+    "redact_query_string": true
+  },
+  "containers": [
+    {
+      "name": "agenda-autocuidado-homologacao",
+      "scheduling_policy": "durable_object",
+      "observability": {
+        "logs": {
+          "enabled": true
+        }
+      },
+      "images": {
+        "app": {
+          "dockerfile": "Dockerfile.cloudflare",
+          "build_context": "..",
+          "build_vars": {
+            "WEB_IMAGE": "autocuidado-cf-web:build",
+            "API_IMAGE": "autocuidado-cf-api:build"
+          }
+        }
+      }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "AGENDA",
+        "class_name": "AgendaContainer"
+      }
+    ]
+  },
+  "exports": {
+    "AgendaContainer": {
+      "type": "durable-object",
+      "storage": "sqlite",
+      "container": "agenda-autocuidado-homologacao"
+    }
+  }
+}

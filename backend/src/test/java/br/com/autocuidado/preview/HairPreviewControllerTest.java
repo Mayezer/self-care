@@ -11,6 +11,7 @@ import br.com.autocuidado.hair.HairPlanController;
 import br.com.autocuidado.persistence.HairPlanService;
 import br.com.autocuidado.persistence.HairProfileStore;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -30,6 +31,9 @@ import org.springframework.test.web.servlet.ResultActions;
 
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -55,6 +59,11 @@ class HairPreviewControllerTest {
 
     @MockitoBean
     private LoginRateLimit loginRateLimit;
+
+    @BeforeEach
+    void allowPreviewBudget() {
+        when(loginRateLimit.tryAcquire(anyString(), anyInt(), anyInt())).thenReturn(true);
+    }
 
     @Test
     void previewsTheSpecificationExampleAnonymouslyWithoutCreatingAPlanOrSession() throws Exception {
