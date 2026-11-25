@@ -43,7 +43,6 @@ jobs:
       RELEASE_OPERATION: ${{ inputs.operation }}
       ROLLBACK_IMAGE: ${{ inputs.rollback_image }}
       WRANGLER_SEND_METRICS: 'false'
-      RELEASE_CONFIG: ${{ runner.temp }}/autocuidado-cloudflare.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,7 +52,12 @@ jobs:
           node-version-file: .nvmrc
           package-manager-cache: false
       - name: Validar a configuração protegida
-        run: python3 deploy/cloudflare_release.py prepare --config "$RELEASE_CONFIG"
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_config="$RUNNER_TEMP/autocuidado-cloudflare.json"
+          printf 'RELEASE_CONFIG=%s\n' "$release_config" >> "$GITHUB_ENV"
+          python3 deploy/cloudflare_release.py prepare --config "$release_config"
       - name: Construir as imagens da revisão aprovada
         if: inputs.operation == 'deploy'
         shell: bash
