@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import worker, { AgendaContainer, runtimeEnvironment } from './cloudflare.mjs';
+import qaWorker, { QaAgendaContainer } from './cloudflare-qa.mjs';
+import probeWorker from './cloudflare-probe.mjs';
+
+test('applies Durable Object updates immediately during controlled deployment and recovery', () => {
+  const config = JSON.parse(readFileSync(new URL('./wrangler.example.json', import.meta.url)));
+  assert.deepEqual(config.durable_objects.code_update_strategy, { mode: 'immediate' });
+});
 
 function environment() {
   return {
@@ -12,6 +20,34 @@ function environment() {
     AUTOCUIDADO_EDGE_TOKEN: '1'.repeat(64), AUTOCUIDADO_MFA_KEY: '2'.repeat(64),
   };
 }
+
+test('QA denies missing or wrong keys before invoking the application', async () => {
+  const env = { ...environment(), RP03_QA_KEY: 'synthetic-qa-key' };
+  let forwarded;
+  env.AGENDA = { getByName: () => ({ fetch: request => { forwarded = request; return new Response(null, { status: 204 }); } }) };
+  for (const path of ['/', '/_rp03/control']) {
+    for (const key of ['', 'wrong']) {
+      assert.equal((await qaWorker.fetch(new Request(env.PUBLIC_SITE_ORIGIN + path, {
+        headers: { 'X-RP03-QA': key, 'CF-Connecting-IP': '192.0.2.10' },
+      }), env)).status, 404);
+      assert.equal(forwarded, undefined);
+    }
+  }
+  assert.equal((await qaWorker.fetch(new Request(env.PUBLIC_SITE_ORIGIN, {
+    headers: { 'X-RP03-QA': env.RP03_QA_KEY, 'CF-Connecting-IP': '192.0.2.10' },
+  }), env)).status, 204);
+  assert.equal(forwarded.headers.get('X-RP03-QA'), null);
+});
+
+test('the private probe binds only the configured service and canonical origin', async () => {
+  let forwarded;
+  const env = { PUBLIC_SITE_ORIGIN: 'https://agenda.example', RP03_QA_KEY: 'synthetic-qa-key',
+    TARGET: { fetch: request => { forwarded = request; return new Response(null, { status: 204 }); } } };
+  await probeWorker.fetch(new Request('http://127.0.0.1:18887//another.example/api/ready?check=1'), env);
+  assert.equal(new URL(forwarded.url).origin, env.PUBLIC_SITE_ORIGIN);
+  assert.equal(forwarded.headers.get('CF-Connecting-IP'), '192.0.2.80');
+  assert.equal(forwarded.headers.get('X-RP03-QA'), env.RP03_QA_KEY);
+});
 
 test('forwards only the Cloudflare client identity and replaces attacker-controlled headers', async () => {
   const env = environment();
@@ -98,6 +134,21 @@ async function containerFixture({ approved, bad = false } = {}) {
   };
   return { instance: new AgendaContainer(ctx, env), ctx, state, events, env };
 }
+
+test('QA maintenance keeps application requests closed until an explicit resume', async () => {
+  const f = await containerFixture();
+  const instance = new QaAgendaContainer(f.ctx, f.env);
+  const control = operation => instance.fetch(new Request('https://agenda.example/_rp03/control', {
+    method: 'POST', headers: { 'X-Autocuidado-Origin': f.env.AUTOCUIDADO_EDGE_TOKEN },
+    body: JSON.stringify({ operation }),
+  }));
+  assert.equal((await control('maintenance')).status, 200);
+  assert.equal((await instance.fetch(new Request('https://agenda.example/api/ready'))).status, 503);
+  assert.equal(f.events.some(event => event[0] === 'start'), false);
+  assert.equal((await control('unknown')).status, 400);
+  assert.equal((await control('resume')).status, 200);
+  assert.equal(f.state.has('qaMaintenance'), false);
+});
 
 test('promotes a new immutable image only after all five probes', async () => {
   const f = await containerFixture({ approved: 'previous' });

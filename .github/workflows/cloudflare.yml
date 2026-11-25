@@ -1,0 +1,92 @@
+name: Publicação Cloudflare
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Operação Cloudflare
+        type: choice
+        options: [deploy, rollback]
+        required: true
+      target:
+        description: Ambiente protegido do GitHub
+        type: choice
+        options: [homologacao, producao]
+        required: true
+      rollback_image:
+        description: Imagem imutável aprovada e compatível com o schema atual (somente rollback)
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main' && inputs.operation == 'deploy'
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (inputs.operation == 'rollback' || needs.verify.result == 'success') }}
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: ${{ inputs.target }}
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_DEPLOY_CONFIG: ${{ secrets.CLOUDFLARE_DEPLOY_CONFIG }}
+      CLOUDFLARE_QA_KEY: ${{ secrets.CLOUDFLARE_QA_KEY }}
+      RELEASE_TARGET: ${{ inputs.target }}
+      RELEASE_OPERATION: ${{ inputs.operation }}
+      ROLLBACK_IMAGE: ${{ inputs.rollback_image }}
+      WRANGLER_SEND_METRICS: 'false'
+      RELEASE_CONFIG: ${{ runner.temp }}/autocuidado-cloudflare.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Validar a configuração protegida
+        run: python3 deploy/cloudflare_release.py prepare --config "$RELEASE_CONFIG"
+      - name: Construir as imagens da revisão aprovada
+        if: inputs.operation == 'deploy'
+        shell: bash
+        run: |
+          set -euo pipefail
+          origin=$(python3 -c 'import json,os; print(json.load(open(os.environ["RELEASE_CONFIG"]))["vars"]["PUBLIC_SITE_ORIGIN"])')
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" -t autocuidado-release-api:current backend
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --build-arg "PUBLIC_SITE_ORIGIN=$origin" --build-arg PUBLIC_SITE_GUIDES=false \
+            -t autocuidado-release-web:current frontend
+      - name: Aplicar Flyway com o papel de migração
+        if: inputs.operation == 'deploy'
+        shell: bash
+        env:
+          SPRING_DATASOURCE_URL: ${{ secrets.MIGRATION_JDBC_URL }}
+          SPRING_DATASOURCE_USERNAME: autocuidado_migration
+          SPRING_DATASOURCE_PASSWORD: ${{ secrets.MIGRATION_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${SPRING_DATASOURCE_URL:?Configure MIGRATION_JDBC_URL}" "${SPRING_DATASOURCE_PASSWORD:?Configure MIGRATION_PASSWORD}"
+          umask 077
+          migration_log=$(mktemp)
+          trap 'rm -f -- "$migration_log"' EXIT
+          if ! docker run --rm --env SPRING_DATASOURCE_URL --env SPRING_DATASOURCE_USERNAME \
+            --env SPRING_DATASOURCE_PASSWORD autocuidado-release-api:current \
+            java -jar autocuidado.jar --migrate >"$migration_log" 2>&1; then
+            echo 'Migração reprovada. Deploy não executado; conferir o banco no provedor.' >&2
+            exit 1
+          fi
+      - name: Publicar no Worker escolhido com atualização imediata
+        run: npx --yes wrangler@4.165.0 deploy --config "$RELEASE_CONFIG" --durable-objects-code-update-mode immediate
+      - name: Conferir as cinco sondas no binding privado do Worker escolhido
+        run: python3 deploy/cloudflare_release.py smoke --config "$RELEASE_CONFIG"
+      - name: Retirar configuração descartável
+        if: always()
+        run: rm -f -- "$RELEASE_CONFIG"

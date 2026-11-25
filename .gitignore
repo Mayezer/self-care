@@ -104,3 +104,7 @@ AGENTS.md
 !/deploy/cloudflare.mjs
 !/deploy/test_cloudflare.mjs
 !/deploy/wrangler.example.json
+!/deploy/cloudflare-qa.mjs
+!/deploy/cloudflare-probe.mjs
+!/deploy/cloudflare_release.py
+!/deploy/test_cloudflare_release.py
