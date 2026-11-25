@@ -1,4 +1,5 @@
 import { Router } from '@angular/router';
+import type { HairRoutineData } from './hair-routine';
 
 export const WEEKDAYS = [
   { value: 'MONDAY', label: 'Segunda-feira', short: 'Seg' },
@@ -11,7 +12,7 @@ export const WEEKDAYS = [
 ] as const;
 
 export const STAGES = [
-  { value: 'WASH_ONLY', label: 'Somente lavagem' },
+  { value: 'WASH_ONLY', label: 'Lavagem e condicionamento' },
   { value: 'HYDRATION', label: 'Hidratação' },
   { value: 'NUTRITION', label: 'Nutrição' },
   { value: 'RECONSTRUCTION', label: 'Reconstrução' },
@@ -19,10 +20,7 @@ export const STAGES = [
 
 export type Weekday = (typeof WEEKDAYS)[number]['value'];
 export type Stage = (typeof STAGES)[number]['value'];
-export type HairGoal = 'ORGANIZE' | Exclude<Stage, 'WASH_ONLY'>;
-
 export interface HairSuggestionOptions {
-  goal?: HairGoal;
   useProfile: boolean;
 }
 
@@ -40,12 +38,13 @@ export interface HairPreviewDraft {
 
 export interface HairPlanRequest extends HairPreviewDraft {
   requestId: string;
+  suggestion?: HairSuggestionOptions;
 }
 
 export interface HairPreviewState extends HairPreviewDraft {
   requestId?: string;
   suggestion?: HairSuggestionOptions;
-  suggestionReason?: string;
+  routine?: HairRoutineData;
   editedDates?: readonly string[];
 }
 

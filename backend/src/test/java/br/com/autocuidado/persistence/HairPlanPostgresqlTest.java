@@ -58,7 +58,7 @@ class HairPlanPostgresqlTest {
                     var jdbc = application.getBean(JdbcTemplate.class);
                     String hash = application.getBean(PasswordEncoder.class).encode(PASSWORD);
                     for (String username : new String[] {"owner_test", "other_test"}) {
-                        jdbc.update("INSERT INTO accounts (username, password_hash, time_zone) VALUES (?, ?, 'UTC')",
+                        jdbc.update("INSERT INTO accounts (username, password_hash, time_zone) VALUES (?, ?, 'America/Sao_Paulo')",
                                 username, hash);
                     }
                     var anonymous = new Session(application);
@@ -99,7 +99,7 @@ class HairPlanPostgresqlTest {
 
                     verifyRollbackAndNewRequest(owner, jdbc);
                 }
-                try (var restarted = startApplication(url, "2026-11-12T00:30:00Z")) {
+                try (var restarted = startApplication(url, "2026-11-12T03:30:00Z")) {
                     var owner = new Session(restarted);
                     owner.login("owner_test");
                     verifyPlan(owner, planId);
@@ -121,7 +121,7 @@ class HairPlanPostgresqlTest {
         var wrongDate = owner.create(body.replace("2026-11-23", "2026-11-24"));
         assertStatus(400, wrongDate);
         assertTrue(json(wrongDate).at("/errors/occurrences").isString());
-        var past = owner.create(body.replace("2026-11-11", "2026-11-09"));
+        var past = owner.create(body.replace("2026-11-11", "2026-11-08"));
         assertStatus(400, past);
         assertTrue(json(past).at("/errors/startDate").isString());
     }

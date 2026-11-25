@@ -1,4 +1,4 @@
-package br.com.autocuidado.hair;
+package br.com.autocuidado.media;
 
 import java.awt.Color;
 import java.awt.RenderingHints;
@@ -15,15 +15,20 @@ import javax.imageio.stream.MemoryCacheImageOutputStream;
 
 import org.springframework.web.multipart.MultipartFile;
 
-final class PhotoRaster {
-    static final int MAX_BYTES = 5 * 1024 * 1024;
+public final class PhotoRaster {
+    public static final int MAX_BYTES = 5 * 1024 * 1024;
     private static final int MAX_INPUT_EDGE = 4096;
     private static final int MAX_INPUT_PIXELS = 12_000_000;
     private static final int MAX_OUTPUT_EDGE = 1600;
 
     private PhotoRaster() {}
 
-    static byte[] normalize(MultipartFile photo) {
+    public static byte[] normalize(MultipartFile photo) {
+        return normalize(photo, MAX_OUTPUT_EDGE);
+    }
+
+    public static byte[] normalize(MultipartFile photo, int maxOutputEdge) {
+        if (maxOutputEdge < 1 || maxOutputEdge > MAX_OUTPUT_EDGE) throw new IllegalArgumentException("Invalid output size");
         if (photo.isEmpty() || photo.getSize() > MAX_BYTES) {
             throw new Rejected("Escolha uma foto JPEG ou PNG de até 5 MiB.");
         }
@@ -45,10 +50,10 @@ final class PhotoRaster {
                     throw new Rejected("A foto deve ter até 4.096 pixels por lado e 12 megapixels.");
                 }
                 reader.addIIOReadWarningListener((source, warning) -> { throw unsupported(); });
-                int sample = Math.max(1, Math.max(width, height) / MAX_OUTPUT_EDGE);
+                int sample = Math.max(1, Math.max(width, height) / maxOutputEdge);
                 var params = reader.getDefaultReadParam();
                 params.setSourceSubsampling(sample, sample, 0, 0);
-                return encode(reader.read(0, params), orientation);
+                return encode(reader.read(0, params), orientation, maxOutputEdge);
             } finally {
                 reader.dispose();
             }
@@ -57,12 +62,12 @@ final class PhotoRaster {
         }
     }
 
-    private static byte[] encode(BufferedImage image, int orientation) throws IOException {
+    private static byte[] encode(BufferedImage image, int orientation, int maxOutputEdge) throws IOException {
         int width = image.getWidth();
         int height = image.getHeight();
         int orientedWidth = orientation >= 5 ? height : width;
         int orientedHeight = orientation >= 5 ? width : height;
-        double scale = Math.min(1, (double) MAX_OUTPUT_EDGE / Math.max(orientedWidth, orientedHeight));
+        double scale = Math.min(1, (double) maxOutputEdge / Math.max(orientedWidth, orientedHeight));
         int outWidth = Math.max(1, (int) Math.round(orientedWidth * scale));
         int outHeight = Math.max(1, (int) Math.round(orientedHeight * scale));
         var normalized = new BufferedImage(outWidth, outHeight, BufferedImage.TYPE_INT_RGB);
@@ -142,7 +147,7 @@ final class PhotoRaster {
         return new Rejected("O arquivo deve ser uma foto JPEG ou PNG válida.");
     }
 
-    static final class Rejected extends RuntimeException {
-        Rejected(String message) { super(message); }
+    public static final class Rejected extends RuntimeException {
+        public Rejected(String message) { super(message); }
     }
 }

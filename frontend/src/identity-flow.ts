@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, input, linkedSignal, output, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { postWithCsrf } from './csrf';
+import { PASSWORD_HINT, PASSWORD_PATTERN } from './password-rules';
 
 export interface LoginStep {
   mfa: 'verify' | 'enroll-email';
@@ -17,7 +18,12 @@ interface Setup {
 
 @Component({
   selector: 'app-identity-flow',
-  styles: `code { overflow-wrap: anywhere; user-select: all; }`,
+  styles: `
+    :host { display: grid; gap: var(--space-md); }
+    form { margin-top: 0; }
+    code { overflow-wrap: anywhere; user-select: all; }
+    .identity-back { justify-self: start; }
+  `,
   template: `
     @switch (step()) {
       @case ('enroll-email') {
@@ -86,8 +92,9 @@ interface Setup {
           </div>
           <div class="field">
             <label for="identity-reset-password">Nova senha</label>
-            <input #password id="identity-reset-password" type="password" autocomplete="new-password" required>
-            <p class="hint">Use de 15 a 128 caracteres.</p>
+            <input #password id="identity-reset-password" type="password" autocomplete="new-password" required
+                   minlength="8" maxlength="256" [pattern]="passwordPattern" aria-describedby="identity-password-hint">
+            <p class="hint" id="identity-password-hint">{{ passwordHint }}</p>
           </div>
           <button class="primary" type="submit" [disabled]="pending()">Redefinir senha</button>
           <button class="secondary" type="button" [disabled]="pending()" (click)="move('reset-recover')">Perdi o autenticador</button>
@@ -124,8 +131,9 @@ interface Setup {
         @if (step() === 'reset-activate') {
           <div class="field">
             <label for="identity-recovery-password">Nova senha</label>
-            <input id="identity-recovery-password" name="password" type="password" autocomplete="new-password" required>
-            <p class="hint">Use de 15 a 128 caracteres.</p>
+            <input id="identity-recovery-password" name="password" type="password" autocomplete="new-password" required
+                   minlength="8" maxlength="256" [pattern]="passwordPattern" aria-describedby="identity-recovery-password-hint">
+            <p class="hint" id="identity-recovery-password-hint">{{ passwordHint }}</p>
           </div>
         }
         <p><label><input type="checkbox" required> Guardei a chave de recuperação</label></p>
@@ -135,10 +143,12 @@ interface Setup {
     @if (error(); as message) {
       <p class="field-error" role="alert">{{ message }}</p>
     }
-    <button class="secondary" type="button" [disabled]="pending()" (click)="cancelled.emit()">Voltar para a entrada</button>
+    <button class="secondary identity-back" type="button" [disabled]="pending()" (click)="cancelled.emit()">Voltar para a entrada</button>
   `,
 })
 export class IdentityFlow {
+  protected readonly passwordHint = PASSWORD_HINT;
+  protected readonly passwordPattern = PASSWORD_PATTERN;
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);

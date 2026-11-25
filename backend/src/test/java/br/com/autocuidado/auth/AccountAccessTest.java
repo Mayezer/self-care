@@ -9,9 +9,14 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.Optional;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 
 import br.com.autocuidado.hair.HairPlanController;
 import br.com.autocuidado.persistence.AccountRepository;
+import br.com.autocuidado.persistence.AccountProfileStore;
 import br.com.autocuidado.persistence.AgendaReminderService;
 import br.com.autocuidado.persistence.HairPlanService;
 import br.com.autocuidado.persistence.HairProfileStore;
@@ -31,6 +36,7 @@ import org.springframework.http.MediaType;
 import org.springframework.mail.MailSender;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mock.web.MockHttpSession;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
@@ -56,17 +62,23 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = {AccountController.class, AccountSessionsController.class, AdminAccessController.class,
-        HairPlanController.class},
+        HairPlanController.class, AccountProfileController.class},
         properties = {"app.auth.email.from=agenda@example.test", "app.auth.mfa-required=false",
                 "app.auth.password-exposure-check=false"})
 @ImportAutoConfiguration(ServletWebSecurityAutoConfiguration.class)
 @Import({SecurityConfiguration.class, AccountService.class, AccountTimeZones.class, EmailRegistration.class, PasswordPolicy.class})
 class AccountAccessTest {
+
+    @MockitoBean
+    private AccountProfileStore accountProfiles;
 
     private static final String EMAIL = "conta@example.test";
     private static final String PASSWORD = "Uma senha longa 4!";
@@ -226,28 +238,40 @@ class AccountAccessTest {
     }
 
     @Test
-    void confirmsWithAStrongPasswordAndFallsBackToTheDefaultTimeZone() throws Exception {
+    void confirmsWithEightCharacterCompositionAndFallsBackToTheDefaultTimeZone() throws Exception {
+        String selectedPassword = "Qa7!xyzt";
         var session = new MockHttpSession();
         var csrf = csrf(session);
         when(accounts.hasValidConfirmation(eq(EMAIL), anyString(), any())).thenReturn(false, true, false);
         when(accounts.confirm(eq(EMAIL), anyString(), any(), anyString(), eq(TIME_ZONE))).thenReturn(1);
-        submit("confirm", session, csrf, confirmation(PASSWORD)).andExpect(status().isBadRequest())
+        submit("confirm", session, csrf, confirmation(selectedPassword)).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.code").isString());
-        submit("confirm", session, csrf, confirmation(PASSWORD)).andExpect(status().isCreated());
+        submit("confirm", session, csrf, confirmation(selectedPassword)).andExpect(status().isCreated());
         var hash = ArgumentCaptor.forClass(String.class);
         verify(accounts).confirm(eq(EMAIL), anyString(), any(), hash.capture(), eq(TIME_ZONE));
-        assertNotEquals(PASSWORD, hash.getValue());
-        assertTrue(passwords.matches(PASSWORD, hash.getValue()));
-        submit("confirm", session, csrf, confirmation(PASSWORD)).andExpect(status().isBadRequest())
+        assertNotEquals(selectedPassword, hash.getValue());
+        assertTrue(passwords.matches(selectedPassword, hash.getValue()));
+        submit("confirm", session, csrf, confirmation(selectedPassword)).andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.code").isString());
     }
 
     @Test
-    void rejectsShortPasswords() throws Exception {
+    void rejectsShortOrIncompletePasswordsBeforeConsumingTheConfirmation() throws Exception {
         var session = new MockHttpSession();
-        submit("confirm", session, csrf(session), confirmation("Ab1!")).andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.password").isString());
+        var token = csrf(session);
+        for (String password : java.util.List.of("Ab1!", "abcdefgh1!", "ABCDEFGH1!", "Abcdefghi!", "Abcdefgh12")) {
+            submit("confirm", session, token, confirmation(password)).andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.password").value(PasswordPolicy.REQUIREMENTS));
+        }
         verifyNoInteractions(accounts);
+    }
+
+    @Test
+    void acceptsAnExistingPasswordWithoutTheNewCompositionAtLogin() throws Exception {
+        String legacyPassword = "somente letras antigas";
+        givenConfirmedAccount(1L, EMAIL, TIME_ZONE, legacyPassword);
+        var session = new MockHttpSession();
+        login(session, csrf(session), legacyPassword).andExpect(status().isNoContent());
     }
 
     @Test
@@ -352,7 +376,7 @@ class AccountAccessTest {
     }
 
     @Test
-    void revalidatesThePreviewUsingTheAccountDateAfterLogin() throws Exception {
+    void keepsTheSameSaoPauloDateBeforeAndAfterLoginEvenForAnOldAccountZone() throws Exception {
         givenConfirmedAccount("UTC");
 
         String draft = """
@@ -366,12 +390,65 @@ class AccountAccessTest {
         login(session, csrf(session), PASSWORD).andExpect(status().isNoContent());
         mvc.perform(post("/api/hair-plans/preview").session(session)
                         .contentType(MediaType.APPLICATION_JSON).content(draft))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.startDate").isString());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrences[0].date").value("2026-11-09"));
+        mvc.perform(get("/api/agenda").session(session)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.timeZone").value("America/Sao_Paulo"));
         mvc.perform(post("/api/hair-plans/preview").session(session)
                         .contentType(MediaType.APPLICATION_JSON).content(draft.replace("2026-11-09", "2026-11-10")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.occurrences[0].date").value("2026-11-12"));
+    }
+
+    @Test
+    void keepsTheAccountProfilePrivateAndRejectsOwnerInjectionAndInvalidNames() throws Exception {
+        mvc.perform(get("/api/account/profile")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/account/profile/photo")).andExpect(status().isUnauthorized());
+        verifyNoInteractions(accountProfiles);
+        givenConfirmedAccount(TIME_ZONE);
+        var session = signedIn(EMAIL);
+        mvc.perform(put("/api/account/profile").session(session).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"displayName\":\"Teste\"}")).andExpect(status().isForbidden());
+        var token = csrf(session);
+        when(accountProfiles.find(1L)).thenReturn(new AccountProfileStore.Profile("Nome Teste", false, 0));
+        mvc.perform(put("/api/account/profile").session(session).header(token.name(), token.value())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"displayName\":\" Nome Teste \"}"))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(jsonPath("$.displayName").value("Nome Teste"));
+        verify(accountProfiles).rename(1L, "Nome Teste");
+        for (String body : new String[]{"{\"accountId\":2,\"displayName\":\"Outra pessoa\"}",
+                "{\"displayName\":42}", "{\"displayName\":\"" + "x".repeat(81) + "\"}"}) {
+            mvc.perform(put("/api/account/profile").session(session).header(token.name(), token.value())
+                    .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
+        }
+    }
+
+    @Test
+    void normalizesTheProfilePhotoAndAlwaysReadsTheAuthenticatedOwner() throws Exception {
+        givenConfirmedAccount(TIME_ZONE);
+        var session = signedIn(EMAIL);
+        var token = csrf(session);
+        var image = new ByteArrayOutputStream();
+        ImageIO.write(new BufferedImage(640, 320, BufferedImage.TYPE_INT_RGB), "PNG", image);
+        var file = new MockMultipartFile("photo", "foto.png", "image/png", image.toByteArray());
+        when(accountProfiles.find(1L)).thenReturn(new AccountProfileStore.Profile(null, true, 1));
+        mvc.perform(multipart("/api/account/profile/photo").file(file).session(session)
+                .header(token.name(), token.value()).with(request -> { request.setMethod("PUT"); return request; }))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.hasPhoto").value(true));
+        var normalized = ArgumentCaptor.forClass(byte[].class);
+        verify(accountProfiles).replacePhoto(eq(1L), normalized.capture());
+        assertEquals(512, ImageIO.read(new ByteArrayInputStream(normalized.getValue())).getWidth());
+        when(accountProfiles.photo(1L)).thenReturn(normalized.getValue());
+        mvc.perform(get("/api/account/profile/photo?accountId=2").session(session))
+                .andExpect(status().isOk()).andExpect(content().contentType(MediaType.IMAGE_JPEG))
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(header().string("Cross-Origin-Resource-Policy", "same-origin"))
+                .andExpect(content().bytes(normalized.getValue()));
+        verify(accountProfiles).photo(1L);
+        var invalid = new MockMultipartFile("photo", "foto.jpg", "image/jpeg", "<svg></svg>".getBytes(StandardCharsets.UTF_8));
+        mvc.perform(multipart("/api/account/profile/photo").file(invalid).session(session)
+                .header(token.name(), token.value()).with(request -> { request.setMethod("PUT"); return request; }))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.errors.photo").isString());
     }
 
     private void givenConfirmedAccount(String timeZone) {
@@ -379,8 +456,12 @@ class AccountAccessTest {
     }
 
     private void givenConfirmedAccount(long id, String email, String timeZone) {
+        givenConfirmedAccount(id, email, timeZone, PASSWORD);
+    }
+
+    private void givenConfirmedAccount(long id, String email, String timeZone, String password) {
         var account = mock(AccountRepository.LoginCredential.class);
-        String hash = passwords.encode(PASSWORD);
+        String hash = passwords.encode(password);
         when(account.getId()).thenReturn(id);
         when(account.getEmail()).thenReturn(email);
         when(account.getPasswordHash()).thenReturn(hash);

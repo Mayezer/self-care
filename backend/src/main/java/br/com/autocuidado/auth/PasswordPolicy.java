@@ -15,6 +15,9 @@ import org.springframework.stereotype.Component;
 
 @Component
 class PasswordPolicy {
+    static final String REQUIREMENTS = "Use de 8 a 128 caracteres, com maiúscula, minúscula, número e símbolo.";
+    private static final Pattern COMPOSITION = Pattern.compile(
+            "(?=.*\\p{Lu})(?=.*\\p{Ll})(?=.*\\p{Nd})(?=.*[\\p{P}\\p{S}]).*", Pattern.DOTALL);
     private static final URI RANGE = URI.create("https://api.pwnedpasswords.com/range/");
     private static final Pattern RANGE_LINE = Pattern.compile("[0-9A-F]{35}:[0-9]+");
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
@@ -25,8 +28,8 @@ class PasswordPolicy {
     }
 
     String check(String password, String identifier) {
-        if (!validLength(password)) {
-            return "Use de 15 a 128 caracteres.";
+        if (!validFormat(password)) {
+            return REQUIREMENTS;
         }
         String lower = password.toLowerCase(Locale.ROOT);
         String accountName = identifier.split("@", 2)[0].toLowerCase(Locale.ROOT);
@@ -37,12 +40,12 @@ class PasswordPolicy {
         return checkExposure && exposed(password) ? "Essa senha apareceu em vazamentos. Escolha outra." : null;
     }
 
-    static boolean validLength(String password) {
+    static boolean validFormat(String password) {
         if (password == null || password.length() > 256) {
             return false;
         }
         int length = password.codePointCount(0, password.length());
-        return length >= 15 && length <= 128;
+        return length >= 8 && length <= 128 && COMPOSITION.matcher(password).matches();
     }
 
     void require(String password, String identifier) {

@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 import br.com.autocuidado.auth.AccountTimeZones;
+import br.com.autocuidado.media.PhotoRaster;
 import br.com.autocuidado.billing.BillingService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;

@@ -1,0 +1,46 @@
+<section class="card profile-editor" aria-labelledby="account-details-title">
+  <div>
+    <h2 id="account-details-title">Seu perfil</h2>
+    <p class="hint">Seu nome e sua foto ficam visíveis apenas para você.</p>
+  </div>
+  <div class="profile-identity">
+    <div class="profile-avatar">
+      @if (state.photoUrl(); as url) {
+        <img [src]="url" alt="Sua foto de perfil" width="96" height="96">
+      } @else {
+        <span class="material-symbol" aria-hidden="true">person</span>
+      }
+    </div>
+    <div class="profile-photo-controls">
+      <p>{{ identifier() }}</p>
+      <input #photo type="file" accept="image/jpeg,image/png" aria-label="Foto de perfil" hidden (change)="upload(photo)">
+      <div class="profile-actions">
+        <button class="secondary" type="button" [disabled]="uploading()" (click)="photo.click()">
+          <span class="material-symbol" aria-hidden="true">photo_camera</span>
+          {{ uploading() ? 'Salvando foto…' : state.current()?.hasPhoto ? 'Alterar foto' : 'Adicionar foto' }}
+        </button>
+        @if (state.current()?.hasPhoto) {
+          <button class="secondary" type="button" [disabled]="uploading()" (click)="removePhoto()">
+            <span class="material-symbol" aria-hidden="true">close</span>Remover foto
+          </button>
+        }
+      </div>
+      <p class="hint">JPEG ou PNG, até 5 MiB.</p>
+    </div>
+  </div>
+  @if (error(); as message) { <p class="field-error" role="alert">{{ message }}</p> }
+  <form (submit)="$event.preventDefault(); saveName()" novalidate>
+    <div class="field">
+      <label for="profile-display-name">Nome</label>
+      <input #displayName id="profile-display-name" autocomplete="name" [value]="name()" [readOnly]="saving()"
+             aria-describedby="profile-name-hint profile-name-error" [attr.aria-invalid]="nameError() ? 'true' : null"
+             (input)="name.set(displayName.value); nameError.set('')">
+      <p id="profile-name-hint" class="hint">Como você prefere ser chamado? Campo opcional, até 80 caracteres.</p>
+      <p id="profile-name-error" class="field-error" [attr.role]="nameError() ? 'alert' : null">{{ nameError() }}</p>
+    </div>
+    <div class="profile-actions">
+      <button class="primary" type="submit" [disabled]="saving()">{{ saving() ? 'Salvando…' : 'Salvar nome' }}</button>
+      <p class="profile-notice" role="status">{{ notice() }}</p>
+    </div>
+  </form>
+</section>

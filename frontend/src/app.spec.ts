@@ -74,7 +74,7 @@ describe('App', () => {
       startDate: '2026-11-11',
       weeks: 2,
       weekdays: ['MONDAY', 'THURSDAY'],
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timeZone: 'America/Sao_Paulo',
     });
     request.flush({
       occurrences: ['2026-11-12', '2026-11-16', '2026-11-19', '2026-11-23']

@@ -1,6 +1,18 @@
 .reminder-form, .reminder-fields { display: grid; gap: var(--space-md); min-width: 0; }
+:host { display: block; max-width: 44rem; margin-inline: auto; }
+.reminder-form { margin: 0; }
+.reminder-fields { gap: var(--space-lg); }
 fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
 .reminder-choices, .reminder-choice { display: flex; align-items: center; gap: var(--space-sm); }
 .reminder-choices { flex-wrap: wrap; }
-.reminder-choice { min-height: var(--touch); }
-.reminder-choice input { inline-size: 1.125rem; block-size: 1.125rem; accent-color: var(--primary); }
+.reminder-choice { min-height: var(--touch); padding: var(--space-sm) .75rem; border: 1px solid var(--input-line); border-radius: var(--radius-sm); background: var(--neutral); cursor: pointer; }
+.reminder-choice:has(:checked) { color: var(--primary); border-color: currentColor; background: var(--tint-light); }
+.reminder-choice:has(:focus-visible) { outline: 2px solid var(--focus-ink); outline-offset: 2px; }
+.reminder-choice input { flex: 0 0 auto; inline-size: 1.125rem; block-size: 1.125rem; min-height: 0; padding: 0; margin: 0; accent-color: var(--primary); }
+.reminder-activation { display: flex; align-items: center; gap: var(--space-md); padding-block-end: var(--space-md); border-block-end: 1px solid var(--line); cursor: pointer; }
+.reminder-activation .hint { display: block; margin-block-start: .25rem; }
+.reminder-switch { appearance: none; flex: 0 0 2.75rem; inline-size: 2.75rem !important; block-size: 1.5rem; min-height: 0 !important; border: 1px solid var(--input-line); border-radius: var(--round) !important; padding: .125rem !important; margin: 0; background: var(--neutral); cursor: pointer; }
+.reminder-switch::before { content: ''; display: block; inline-size: 1.125rem; block-size: 1.125rem; border-radius: var(--round); background: var(--muted); transition: translate .15s; }
+.reminder-switch:checked { background: var(--primary); border-color: var(--primary); }
+.reminder-switch:checked::before { translate: 1.125rem; background: var(--on-accent); }
+@media (prefers-reduced-motion: reduce) { .reminder-switch::before { transition: none; } }

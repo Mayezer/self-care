@@ -2,15 +2,14 @@ package br.com.autocuidado.auth;
 
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Set;
 
 import br.com.autocuidado.persistence.AccountRepository;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AccountTimeZones {
-    private static final Set<String> IDS = ZoneId.getAvailableZoneIds();
-    private static final List<String> SORTED_IDS = IDS.stream().sorted().toList();
+    public static final String DEFAULT_ID = "America/Sao_Paulo";
+    public static final ZoneId DEFAULT_ZONE = ZoneId.of(DEFAULT_ID);
     private final AccountRepository accounts;
 
     AccountTimeZones(AccountRepository accounts) {
@@ -18,18 +17,19 @@ public class AccountTimeZones {
     }
 
     public static boolean isValid(String zone) {
-        return IDS.contains(zone);
+        return DEFAULT_ID.equals(zone);
     }
 
     public static List<String> ids() {
-        return SORTED_IDS;
+        return List.of(DEFAULT_ID);
     }
 
     public ZoneId current(long accountId) {
-        return ZoneId.of(accounts.findTimeZone(accountId));
+        return DEFAULT_ZONE;
     }
 
     public void update(long accountId, String zone) {
-        accounts.updateTimeZone(accountId, zone);
+        if (!isValid(zone)) throw new IllegalArgumentException("O fuso da agenda é America/Sao_Paulo.");
+        accounts.updateTimeZone(accountId, DEFAULT_ID);
     }
 }

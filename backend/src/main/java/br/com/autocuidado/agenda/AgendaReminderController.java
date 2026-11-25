@@ -74,9 +74,10 @@ class AgendaReminderController {
         if (!validTime && (enabled || !timeField.isNull())) {
             errors.put("time", "Informe um horário válido, como 09:00.");
         }
-        String timeZone = request.path("timeZone").asString("");
-        if (!AccountTimeZones.isValid(timeZone)) {
-            errors.put("timeZone", "Escolha um fuso horário da lista.");
+        String timeZone = AccountTimeZones.DEFAULT_ID;
+        if (request.has("timeZone") && (!request.path("timeZone").isString()
+                || !AccountTimeZones.isValid(request.path("timeZone").asString()))) {
+            errors.put("timeZone", "A agenda usa sempre o horário de São Paulo (America/Sao_Paulo).");
         }
         if (!errors.isEmpty()) return ResponseEntity.badRequest().body(Map.of("errors", errors));
 

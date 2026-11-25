@@ -2,13 +2,18 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { postWithCsrf } from './csrf';
+import { RouterLink } from '@angular/router';
+import { PASSWORD_HINT, PASSWORD_PATTERN } from './password-rules';
 
 @Component({
   selector: 'app-password-change',
+  imports: [RouterLink],
+  styles: `
+    :host { display: block; }
+    form { margin: 0; }
+    .password-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+  `,
   template: `
-    <details>
-      <summary>Alterar senha</summary>
-      <p>Confirme sua senha atual e um código do autenticador. A troca encerra as sessões da sua conta.</p>
       <form method="post" (submit)="$event.preventDefault(); change(current, factor, password)">
         <div class="field">
           <label for="change-current-password">Senha atual</label>
@@ -21,18 +26,23 @@ import { postWithCsrf } from './csrf';
         </div>
         <div class="field">
           <label for="change-new-password">Nova senha</label>
-          <input #password id="change-new-password" type="password" autocomplete="new-password" required>
-          <p class="hint">Use de 15 a 128 caracteres.</p>
+          <input #password id="change-new-password" type="password" autocomplete="new-password" required
+                 minlength="8" maxlength="256" [pattern]="passwordPattern" aria-describedby="new-password-hint">
+          <p class="hint" id="new-password-hint">{{ passwordHint }}</p>
         </div>
-        <button class="primary" type="submit" [disabled]="pending()">Alterar senha</button>
+        <div class="password-actions">
+          <button class="primary" type="submit" [disabled]="pending()">{{ pending() ? 'Alterando…' : 'Alterar senha' }}</button>
+          @if (!pending()) { <a class="secondary" routerLink="/perfil">Voltar ao perfil</a> }
+        </div>
       </form>
       @if (error(); as message) {
         <p class="field-error" role="alert">{{ message }}</p>
       }
-    </details>
   `,
 })
 export class PasswordChange {
+  protected readonly passwordHint = PASSWORD_HINT;
+  protected readonly passwordPattern = PASSWORD_PATTERN;
   private readonly http = inject(HttpClient);
   private readonly destroyRef = inject(DestroyRef);
   readonly changed = output<void>();

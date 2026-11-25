@@ -69,7 +69,15 @@ public class RecurringPlan {
     @Column(columnDefinition = "text[]")
     private String[] skinSteps;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private String hairRoutine;
+
     private Long routineRequestPlanId;
+
+    String hairRoutine() { return hairRoutine; }
+
+    void hairRoutine(String value) { hairRoutine = value; }
 
     protected RecurringPlan() {}
 

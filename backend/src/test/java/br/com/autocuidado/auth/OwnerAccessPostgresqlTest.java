@@ -71,7 +71,7 @@ class OwnerAccessPostgresqlTest {
                 assertFalse(OwnerProvisioning.provision(provisioner, OTHER, hash, false));
                 assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM accounts WHERE email = ?", Integer.class, OTHER));
 
-                jdbc.update("INSERT INTO accounts (username, password_hash, time_zone) VALUES ('legacy_test', ?, 'UTC')", hash);
+                jdbc.update("INSERT INTO accounts (username, password_hash, time_zone) VALUES ('legacy_test', ?, 'America/Sao_Paulo')", hash);
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var inbox = app.getBean(Inbox.class);
                 var owner = new BrowserSession(origin);

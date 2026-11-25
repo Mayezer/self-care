@@ -1,6 +1,9 @@
 package br.com.autocuidado.persistence;
 
 import java.net.CookieManager;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import javax.imageio.ImageIO;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -66,13 +69,13 @@ class HairProfilePostgresqlTest {
                 long owner;
                 long plan;
                 try (var previous = new SpringApplicationBuilder(SelfCareApplication.class)
-                        .web(WebApplicationType.NONE).run("--spring.datasource.url=" + url, "--spring.flyway.target=4",
+                        .web(WebApplicationType.NONE).run("--spring.datasource.url=" + url, "--spring.flyway.target=23",
                                 "--spring.jpa.hibernate.ddl-auto=none")) {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
                     owner = jdbc.queryForObject("""
                             INSERT INTO accounts (username, password_hash, time_zone)
-                            VALUES ('legacy_profile', ?, 'America/Sao_Paulo') RETURNING id
+                            VALUES ('legacy_profile', ?, 'UTC') RETURNING id
                             """, Long.class, hash);
                     plan = jdbc.queryForObject("""
                             INSERT INTO recurring_plans (account_id, category, start_date, weeks, end_date)
@@ -89,9 +92,13 @@ class HairProfilePostgresqlTest {
                 String planPath = "/api/hair-plans/" + plan;
                 JsonNode savedPlan;
                 JsonNode history;
+                long suggestedPlan;
+                JsonNode savedRoutine;
+                byte[] avatar;
+                String suggestedRequest;
                 try (var app = start(url)) {
                     var jdbc = app.getBean(JdbcTemplate.class);
-                    jdbc.update("INSERT INTO accounts (username, password_hash, time_zone) VALUES (?, ?, 'UTC')",
+                    jdbc.update("INSERT INTO accounts (username, password_hash, time_zone) VALUES (?, ?, 'America/Sao_Paulo')",
                             "other_profile", app.getBean(PasswordEncoder.class).encode(PASSWORD));
                     assertEquals(1, jdbc.queryForObject("""
                             SELECT count(*) FROM flyway_schema_history WHERE version = '5' AND success
@@ -104,25 +111,53 @@ class HairProfilePostgresqlTest {
                     session.put(PROFILE, profile, true, 401);
                     session.login("legacy_profile");
                     assertEquals("legacy_profile", session.get("/api/agenda", 200).path("username").asString());
+                    assertEquals("America/Sao_Paulo", session.get("/api/agenda", 200).path("timeZone").asString());
+                    assertEquals("America/Sao_Paulo", jdbc.queryForObject(
+                            "SELECT time_zone FROM accounts WHERE id = ?", String.class, owner));
                     savedPlan = session.get(planPath, 200);
                     history = session.get(HISTORY, 200);
                     assertEquals("HYDRATION", history.at("/0/stage").asString());
                     assertTrue(session.get(PROFILE, 200).isEmpty());
-                    assertWashingFallback(session.preview(true), "INSUFFICIENT_ANSWERS");
+                    assertCareRoutine(session.preview(true), false);
                     session.put(PROFILE, profile, false, 403);
 
                     assertEquals(JSON.readTree(profile), session.put(PROFILE, profile, true, 200));
                     assertEquals(JSON.readTree(profile), session.get(PROFILE, 200));
+                    var accountProfiles = app.getBean(AccountProfileStore.class);
+                    accountProfiles.rename(owner, "Pessoa de teste");
+                    var image = new ByteArrayOutputStream();
+                    ImageIO.write(new BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), "JPEG", image);
+                    avatar = image.toByteArray();
+                    accountProfiles.replacePhoto(owner, avatar);
+                    assertEquals("Pessoa de teste", session.get("/api/account/profile", 200).path("displayName").asString());
+                    assertTrue(session.get("/api/account/profile", 200).path("hasPhoto").asBoolean());
+                    assertTrue(java.util.Arrays.equals(avatar, session.photo("", 200)));
+                    var preview = session.preview(true);
+                    var requestId = UUID.randomUUID();
+                    String body = JSON.writeValueAsString(JSON.createObjectNode()
+                            .put("startDate", LocalDate.now(ZoneOffset.UTC).plusDays(1).toString()).put("weeks", 2)
+                            .set("weekdays", JSON.readTree("[\"MONDAY\"]"))
+                            .put("requestId", requestId.toString()).set("occurrences", preview.path("occurrences"))
+                            .set("suggestion", JSON.readTree("{\"useProfile\":true}")));
+                    suggestedRequest = body;
+                    suggestedPlan = session.post("/api/hair-plans", body, 201).path("planId").asLong();
+                    savedRoutine = session.get("/api/hair-plans/" + suggestedPlan, 200).path("routine");
+                    assertEquals(preview.path("suggestion"), savedRoutine);
+                    assertEquals(suggestedPlan, session.post("/api/hair-plans", body, 201).path("planId").asLong());
                     other.login("other_profile");
+                    assertTrue(other.get("/api/account/profile", 200).path("displayName").isNull());
+                    assertFalse(other.get("/api/account/profile", 200).path("hasPhoto").asBoolean());
+                    other.get("/api/hair-plans/" + suggestedPlan, 404);
+                    other.photo("?accountId=" + owner, 404);
                     assertTrue(other.get(PROFILE, 200).isEmpty());
-                    assertWashingFallback(session.preview(true), "NO_REVIEWED_MODEL");
-                    assertWashingFallback(session.preview(false), "INSUFFICIENT_ANSWERS");
-                    assertWashingFallback(other.preview(true), "INSUFFICIENT_ANSWERS");
+                    assertCareRoutine(session.preview(true), true);
+                    assertCareRoutine(session.preview(false), false);
+                    assertCareRoutine(other.preview(true), false);
                     other.put(PROFILE, "{\"observations\":[\"NONE\"]}", true, 200);
                     var reviewed = other.preview(true);
-                    assertWashingFallback(reviewed, "MODEL_SELECTED");
-                    assertEquals("organize-washes", reviewed.at("/suggestion/modelId").asString());
-                    assertWashingFallback(session.preview(true), "NO_REVIEWED_MODEL");
+                    assertCareRoutine(reviewed, false);
+                    assertEquals("daily-hair-care", reviewed.at("/suggestion/modelId").asString());
+                    assertCareRoutine(session.preview(true), true);
                     assertEquals(JSON.readTree(profile), session.get(PROFILE, 200));
                     other.get(PROFILE + "/" + owner, 404);
                     other.put(PROFILE + "/" + owner, "{}", true, 404);
@@ -154,7 +189,7 @@ class HairProfilePostgresqlTest {
                     assertEquals(JSON.readTree("false"), features.path("hairProfileAvailable"));
                     assertEquals(JSON.readTree("false"), features.path("hairProductsAvailable"));
                     session.get(PROFILE, 404);
-                    assertWashingFallback(session.preview(true), "INSUFFICIENT_ANSWERS");
+                    assertCareRoutine(session.preview(true), false);
                     session.get(PRODUCTS, 404);
                     session.put(PROFILE, "{}", true, 404);
                     assertEquals(savedPlan, session.get(planPath, 200));
@@ -164,12 +199,21 @@ class HairProfilePostgresqlTest {
                 try (var restarted = start(url)) {
                     var session = new Session(origin(restarted));
                     session.login("legacy_profile");
+                    assertEquals("Pessoa de teste", session.get("/api/account/profile", 200).path("displayName").asString());
+                    assertTrue(java.util.Arrays.equals(avatar, session.photo("", 200)));
+                    assertEquals(savedRoutine, session.get("/api/hair-plans/" + suggestedPlan, 200).path("routine"));
                     assertEquals(JSON.readTree(profile), session.get(PROFILE, 200));
                     assertEquals(JSON.readTree("{\"rootOiliness\":\"RARELY\"}"),
                             session.put(PROFILE, "{\"rootOiliness\":\"RARELY\"}", true, 200));
                     assertEquals(JSON.readTree("{\"rootOiliness\":\"RARELY\"}"), session.get(PROFILE, 200));
                     assertTrue(session.put(PROFILE, "{}", true, 200).isEmpty());
                     assertTrue(session.get(PROFILE, 200).isEmpty());
+                    assertEquals(suggestedPlan, session.post("/api/hair-plans", suggestedRequest, 201).path("planId").asLong());
+                    assertEquals(savedRoutine, session.get("/api/hair-plans/" + suggestedPlan, 200).path("routine"));
+                    var removed = session.send(session.withCsrf(session.request("/api/account/profile/photo")).DELETE(), 200);
+                    assertFalse(removed.path("hasPhoto").asBoolean());
+                    assertEquals("Pessoa de teste", removed.path("displayName").asString());
+                    session.photo("", 404);
                     assertEquals(0, restarted.getBean(JdbcTemplate.class).queryForObject(
                             "SELECT count(*) FROM hair_profiles WHERE account_id = ?", Integer.class, owner));
                     assertEquals(savedPlan, session.get(planPath, 200));
@@ -184,8 +228,9 @@ class HairProfilePostgresqlTest {
         }
     }
 
-    private static void assertWashingFallback(JsonNode preview, String status) {
-        assertEquals(status, preview.at("/suggestion/status").asString());
+    private static void assertCareRoutine(JsonNode preview, boolean personalized) {
+        assertEquals(personalized, preview.at("/suggestion/personalized").asBoolean());
+        assertTrue(preview.at("/suggestion/steps").size() >= 4);
         var occurrences = preview.path("occurrences");
         assertEquals(2, occurrences.size());
         for (JsonNode occurrence : occurrences) {
@@ -213,7 +258,7 @@ class HairProfilePostgresqlTest {
                     var hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                     long ownerId = jdbc.queryForObject("""
                             INSERT INTO accounts (username, password_hash, time_zone)
-                            VALUES ('products_owner', ?, 'UTC') RETURNING id
+                            VALUES ('products_owner', ?, 'America/Sao_Paulo') RETURNING id
                             """, Long.class, hash);
                     jdbc.update("""
                             INSERT INTO accounts (username, password_hash, time_zone)
@@ -239,9 +284,8 @@ class HairProfilePostgresqlTest {
                     other.get(PRODUCTS + "/" + ownerId, 404);
 
                     other.put(PROFILE, oily, true, 200);
-                    var beforeReview = other.get(PRODUCTS, 200);
-                    assertEquals("SHAMPOO", beforeReview.at("/cards/0/category").asString());
-                    assertTrue(beforeReview.at("/cards/0/variant").isNull());
+                    var sameLocalDate = other.get(PRODUCTS, 200);
+                    assertEquals(suggestions, sameLocalDate);
 
                     other.put(PROFILE, heat, true, 200);
                     var otherSuggestions = other.get(PRODUCTS + "?accountId=" + ownerId, 200);
@@ -300,7 +344,7 @@ class HairProfilePostgresqlTest {
         @Bean
         @Primary
         Clock catalogClock() {
-            return Clock.fixed(Instant.parse("2026-11-11T00:30:00Z"), ZoneOffset.UTC);
+            return Clock.fixed(Instant.parse("2026-11-11T03:30:00Z"), ZoneOffset.UTC);
         }
     }
 
@@ -331,6 +375,21 @@ class HairProfilePostgresqlTest {
             var request = request(path).header("Content-Type", "application/json")
                     .PUT(HttpRequest.BodyPublishers.ofString(body));
             return send(csrf ? withCsrf(request) : request, status);
+        }
+
+        byte[] photo(String query, int status) throws Exception {
+            var response = client.send(request("/api/account/profile/photo" + query).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(status, response.statusCode());
+            if (status == 200) {
+                assertTrue(response.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+                assertEquals("same-origin", response.headers().firstValue("Cross-Origin-Resource-Policy").orElseThrow());
+            }
+            return response.body();
+        }
+
+        JsonNode post(String path, String body, int status) throws Exception {
+            return send(withCsrf(request(path)).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)), status);
         }
 
         JsonNode preview(boolean useProfile) throws Exception {

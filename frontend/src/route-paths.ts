@@ -2,6 +2,7 @@ export const CLIENT_PATHS = {
   plan: 'cronogramas/:planId',
   agenda: 'agenda',
   profile: 'perfil',
+  passwordChange: 'perfil/alterar-senha',
   forum: 'forum',
   forumModeration: 'forum/moderacao',
   forumTopic: 'forum/:topicId',

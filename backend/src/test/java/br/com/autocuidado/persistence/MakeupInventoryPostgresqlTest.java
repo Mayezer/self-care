@@ -54,7 +54,7 @@ class MakeupInventoryPostgresqlTest {
                     var hash = app.getBean(PasswordEncoder.class).encode(password);
                     jdbc.update("""
                             INSERT INTO accounts (username, password_hash, time_zone) VALUES
-                            ('vanity_first', ?, 'America/Sao_Paulo'), ('vanity_second', ?, 'UTC')
+                            ('vanity_first', ?, 'America/Sao_Paulo'), ('vanity_second', ?, 'America/Sao_Paulo')
                             """, hash, hash);
 
                     var first = new Session(app);

@@ -24,6 +24,7 @@ export const appConfig: ApplicationConfig = {
     { path: CLIENT_PATHS.plan, component: SavedHairPlan, title: 'Cronograma salvo | Agenda de autocuidado' },
     { path: CLIENT_PATHS.agenda, component: Agenda, title: 'Agenda | Agenda de autocuidado' },
     { path: CLIENT_PATHS.profile, component: Agenda, data: { view: 'profile' }, title: 'Perfil | Agenda de autocuidado' },
+    { path: CLIENT_PATHS.passwordChange, component: Agenda, data: { view: 'password-change' }, title: 'Alterar senha | Agenda de autocuidado' },
     { path: CLIENT_PATHS.forum, component: PublicForum, title: 'Fórum | Agenda de autocuidado' },
     { path: CLIENT_PATHS.forumModeration, component: ForumModeration, title: 'Moderação do fórum | Agenda de autocuidado' },
     { path: CLIENT_PATHS.forumTopic, component: PublicForum, title: 'Tópico do fórum | Agenda de autocuidado' },

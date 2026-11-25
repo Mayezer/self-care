@@ -1,4 +1,8 @@
 import { PageHeading } from './page-heading';
+import { ACCOUNT_TIME_ZONE } from './account-time-zone';
+import { PASSWORD_HINT, PASSWORD_PATTERN } from './password-rules';
+import { AccountProfile } from './account-profile';
+import { AccountProfileState, type AccountProfileData } from './account-profile-state';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -34,6 +38,7 @@ interface AgendaAccount {
   billingAvailable: boolean;
   hairDiaryAvailable: boolean;
   registrationEnabled: boolean;
+  profile?: AccountProfileData;
 }
 
 type FieldErrors = Partial<Record<'email' | 'code' | 'password' | 'body', string>>;
@@ -42,11 +47,14 @@ type AuthMode = 'login' | 'register' | 'confirm';
 @Component({
   selector: 'app-agenda',
   imports: [PageHeading, AgendaWeek, HairDiary, HairProfile, HairProducts, History, NewCare, ReminderSettings,
-    SubscriptionSettings, AccountSessions, IdentityFlow, PasswordChange, Vanity, MakeupCleaning, RouterLink],
+    SubscriptionSettings, AccountSessions, IdentityFlow, PasswordChange, AccountProfile, Vanity, MakeupCleaning, RouterLink],
   templateUrl: './agenda.html',
 })
 export class Agenda {
+  protected readonly passwordHint = PASSWORD_HINT;
+  protected readonly passwordPattern = PASSWORD_PATTERN;
   private readonly http = inject(HttpClient);
+  private readonly profileState = inject(AccountProfileState);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -62,13 +70,14 @@ export class Agenda {
   protected readonly showNewCare = this.view === 'new-care';
   protected readonly showVanity = this.view === 'vanity';
   protected readonly showProfile = this.view === 'profile';
+  protected readonly showPasswordChange = this.view === 'password-change';
   protected readonly showHairProfile = this.view === 'hair-profile';
   protected readonly showHairProducts = this.view === 'hair-products';
   protected readonly showHairDiary = this.view === 'hair-diary';
   protected readonly showReminders = this.view === 'reminders';
   protected readonly showSubscription = this.view === 'subscription';
   protected readonly accessHeadingIcon = this.showHistory ? 'history' : this.view ? 'account-access' : 'calendar_today';
-  protected readonly pageTitle = this.showVanity ? 'Penteadeira' : this.showHairProducts ? 'Produtos' : this.showHairDiary ? 'Diário capilar' : this.showSubscription ? 'Assinatura' : this.showReminders ? 'Lembretes' : this.showHairProfile ? 'Meu cabelo'
+  protected readonly pageTitle = this.showPasswordChange ? 'Alterar senha' : this.showVanity ? 'Penteadeira' : this.showHairProducts ? 'Produtos' : this.showHairDiary ? 'Diário capilar' : this.showSubscription ? 'Assinatura' : this.showReminders ? 'Lembretes' : this.showHairProfile ? 'Meu cabelo'
     : this.showProfile ? 'Perfil' : this.showHistory ? 'Histórico' : this.showNewCare ? 'Novo cuidado' : 'Agenda';
   protected readonly accountArea = this.showVanity ? 'a penteadeira' : this.showHairProducts ? 'as sugestões de produtos' : this.showHairDiary ? 'o diário capilar' : this.showSubscription ? 'a assinatura' : this.showReminders ? 'as configurações' : this.showHairProfile || this.showProfile
     ? 'o perfil' : this.showHistory ? 'o histórico' : 'a agenda';
@@ -89,7 +98,7 @@ export class Agenda {
   protected readonly identity = signal<LoginStep | { mfa: 'reset' } | null>(null);
 
   constructor() {
-    this.loadAgenda(this.showVanity || this.showHairDiary || this.showSubscription || this.showProfile || this.showHairProfile || this.showHairProducts);
+    this.loadAgenda(this.showVanity || this.showHairDiary || this.showSubscription || this.showPasswordChange || this.showProfile || this.showHairProfile || this.showHairProducts);
     if (this.hairPreviewDraft || this.view) {
       afterNextRender(() => this.heading()?.nativeElement.focus());
     }
@@ -100,6 +109,7 @@ export class Agenda {
     this.unavailable.set(false);
     this.http.get<AgendaAccount>('/api/agenda').pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: account => {
+        this.profileState.current.set(account.profile ?? { displayName: null, hasPhoto: false, photoVersion: 0 });
         this.registrationEnabled.set(account.registrationEnabled !== false);
         if (this.hairPreviewDraft) {
           void this.router.navigate(['/'], {
@@ -119,6 +129,7 @@ export class Agenda {
         }
       },
       error: (error: HttpErrorResponse) => {
+        this.profileState.current.set(null);
         this.account.set(null);
         if (error.status === 401) {
           this.registrationEnabled.set(error.headers.get('X-Registration-Enabled') !== 'false');
@@ -142,6 +153,7 @@ export class Agenda {
   }
 
   protected sessionsEnded(message = 'Você saiu da conta.'): void {
+    this.profileState.current.set(null);
     void clearBrowserPush().catch(() => undefined);
     this.account.set(null);
     this.notice.set(message);
@@ -190,7 +202,7 @@ export class Agenda {
   }
 
   protected confirm(email: string, code: HTMLInputElement, password: HTMLInputElement): void {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timeZone = ACCOUNT_TIME_ZONE;
     this.send('confirm', { email, code: code.value, password: password.value, timeZone }, () => {
       code.value = '';
       password.value = '';

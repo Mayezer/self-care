@@ -112,15 +112,15 @@ export const GUIDES = {
     title: 'Etapas do cronograma',
     summary: 'Veja como escolher os dias e o que significam as etapas opcionais.',
     paragraphs: [
-      'Na prévia, escolha de 1 a 7 dias diferentes da semana. O total aparece na tela conforme você seleciona os dias. Na montagem manual, cada sessão começa em Somente lavagem. Na sugestão, você pode escolher uma etapa para a primeira sessão. Ajuste as etapas na prévia como preferir.',
-      'Hidratação é um nome usado em produtos voltados à maciez. Nutrição costuma aparecer em fórmulas com óleos ou outros ingredientes emolientes. Reconstrução é um nome comercial usado em produtos para fios que passaram por desgaste. A composição e o modo de uso variam conforme a fórmula.',
+      'Na prévia, escolha de 1 a 7 dias diferentes da semana. Na montagem manual, cada sessão começa em Lavagem e condicionamento. Em Receber sugestão, os cuidados de cada lavagem são adaptados às respostas salvas em Meu cabelo. Confira a rotina em cada data e ajuste os cuidados extras como preferir.',
+      'Hidratação, nutrição e reconstrução são opções para organizar cuidados escolhidos por você. O perfil sozinho não define intervalos seguros para esses tratamentos. A sugestão do app adapta o condicionamento, o manuseio e as orientações de cuidado, sem escolher produtos.',
       'Antes de usar um produto, confira a região de aplicação, o tempo de pausa e a orientação sobre enxágue no rótulo. Escolha os dias e as etapas que cabem na sua rotina.',
     ],
     sources: [
       cosmeticsLabel,
       { title: 'Anvisa · Consultar a regularização de um cosmético', url: 'https://www.gov.br/anvisa/pt-br/comunicacao/campanhas/estetica/consulta-de-cosmeticos' },
       { title: 'Academia Americana de Dermatologia · Cuidados com o cabelo', url: 'https://www.aad.org/public/everyday-care/hair-scalp-care/hair/healthy-hair-tips' },
-      { title: 'Pantene · Exemplo de modo de uso de uma máscara hidratante', url: 'https://pantene.com.br/pt-br/produtos/tratamentos/mascara-hidratante-colageno-hidrata-resgata' },
+      { title: 'Academia Americana de Dermatologia · Cuidados com cachos e crespos', url: 'https://www.aad.org/public/everyday-care/hair-scalp-care/hair/curly-hair-care' },
     ],
   },
   skin: {

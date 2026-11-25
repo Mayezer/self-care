@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import br.com.autocuidado.auth.AccountPrincipal;
+import br.com.autocuidado.media.PhotoRaster;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;

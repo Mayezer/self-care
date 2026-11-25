@@ -2,6 +2,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, output, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { postWithCsrf } from './csrf';
+import { ACCOUNT_TIME_ZONE } from './account-time-zone';
 
 interface Session {
   id: string;
@@ -12,13 +13,26 @@ interface Session {
 @Component({
   selector: 'app-account-sessions',
   styles: `
-    details > summary { cursor: pointer; }
-    ul { display: grid; gap: .75rem; padding-inline-start: 1.25rem; }
-    li > button { margin-block-start: .25rem; }
+    :host { display: block; }
+    summary { display: flex; align-items: center; gap: var(--space-sm); min-height: var(--touch); cursor: pointer; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    summary > .material-symbol:last-child { margin-inline-start: auto; transition: rotate .15s; }
+    details[open] summary > .material-symbol:last-child { rotate: 180deg; }
+    summary .hint { display: block; }
+    ul { display: grid; gap: var(--space-sm); padding: 0; margin-block: var(--space-md); list-style: none; }
+    li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--neutral); }
+    .session-details { display: grid; gap: .25rem; }
+    form { border-top: 1px solid var(--line); padding-top: var(--space-md); }
+    .session-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); }
+    @media (prefers-reduced-motion: reduce) { summary > .material-symbol:last-child { transition: none; } }
   `,
   template: `
-    <details (toggle)="toggle(panel.open)" #panel>
-      <summary>Sessões ativas</summary>
+    <details class="card" (toggle)="toggle(panel.open)" #panel>
+      <summary>
+        <span class="editorial-icon material-symbol" aria-hidden="true">devices</span>
+        <span><strong>Sessões ativas</strong><span class="hint">Veja onde sua conta está conectada</span></span>
+        <span class="material-symbol" aria-hidden="true">expand_more</span>
+      </summary>
       @if (loading()) {
         <p role="status">Carregando sessões…</p>
       }
@@ -32,13 +46,15 @@ interface Session {
         <ul>
           @for (session of sessions(); track session.id) {
             <li>
-              <strong>{{ session.current ? 'Este navegador' : 'Outra sessão' }}</strong>
-              <div>Última atividade <time [attr.datetime]="session.lastActivity">{{ activity(session.lastActivity) }}</time></div>
+              <div class="session-details">
+                <strong>{{ session.current ? 'Este navegador' : 'Outra sessão' }}</strong>
+                <p class="hint">Última atividade <time [attr.datetime]="session.lastActivity">{{ activity(session.lastActivity) }}</time></p>
+              </div>
               <button class="secondary" type="button" [disabled]="pending()"
                       (click)="select(session.id, session.current)"
                       [attr.aria-label]="session.current ? 'Encerrar sessão deste navegador'
                         : 'Encerrar sessão com última atividade em ' + activity(session.lastActivity)">
-                Encerrar sessão
+                <span class="material-symbol" aria-hidden="true">logout</span>Encerrar sessão
               </button>
             </li>
           }
@@ -58,8 +74,10 @@ interface Session {
             <input #password id="revoke-session-password" type="password" autocomplete="current-password"
                    required maxlength="1024" [readOnly]="pending()">
           </div>
-          <button class="primary" type="submit" [disabled]="pending()">Confirmar encerramento</button>
-          <button class="secondary" type="button" [disabled]="pending()" (click)="target.set(null)">Cancelar</button>
+          <div class="session-actions">
+            <button class="primary" type="submit" [disabled]="pending()">Confirmar encerramento</button>
+            <button class="secondary" type="button" [disabled]="pending()" (click)="target.set(null)">Cancelar</button>
+          </div>
         </form>
       }
     </details>
@@ -70,7 +88,7 @@ export class AccountSessions {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly password = viewChild<ElementRef<HTMLInputElement>>('password');
-  private readonly format = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  private readonly format = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: ACCOUNT_TIME_ZONE });
 
   readonly signedOut = output<void>();
   readonly sessionExpired = output<void>();

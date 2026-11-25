@@ -7,16 +7,18 @@ import { catchError, EMPTY, switchMap } from 'rxjs';
 import { postWithCsrf } from './csrf';
 import { formatHairDate, STAGES } from './hair-preview-draft';
 import type { PreviewOccurrence } from './hair-preview-draft';
+import { HairRoutine, type HairRoutineData } from './hair-routine';
 
 interface SavedPlan {
   planId: number;
   occurrences: PreviewOccurrence[];
   closedOn: string | null;
+  routine?: HairRoutineData | null;
 }
 
 @Component({
   selector: 'app-saved-hair-plan',
-  imports: [PageHeading, RouterLink],
+  imports: [PageHeading, RouterLink, HairRoutine],
   styles: `
     .session {
       display: flex;
@@ -61,14 +63,23 @@ interface SavedPlan {
           }
         </section>
       }
+      @if (plan()?.routine; as routine) {
+        <section class="card agenda-section"><app-hair-routine [routine]="routine" view="summary" /></section>
+      }
       <section class="card agenda-section" aria-labelledby="saved-sessions">
         <h2 id="saved-sessions">Sessões do cronograma</h2>
         @if (plan(); as saved) {
           <ol class="sessions" role="list">
-            @for (session of saved.occurrences; track session.date) {
+            @for (session of saved.occurrences; track session.date; let first = $first) {
               <li class="session">
                 <time [attr.datetime]="session.date">{{ dateLabel(session.date) }}</time>
                 <span>{{ stageLabel(session.stage) }}</span>
+                @if (saved.routine; as routine) {
+                  <details class="routine-details" [open]="first">
+                    <summary>Rotina deste dia</summary>
+                    <app-hair-routine [routine]="routine" />
+                  </details>
+                }
               </li>
             }
           </ol>

@@ -1,5 +1,7 @@
 package br.com.autocuidado.hair;
 
+import br.com.autocuidado.media.PhotoRaster;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.CookieManager;

@@ -56,6 +56,8 @@ O workflow manual **Publicação** usa um host Linux x86-64 com Docker Compose, 
 
 O rollback troca as imagens e preserva o banco e o histórico do Flyway. Teste a compatibilidade das duas imagens com o esquema atualizado e com MFA antes de promover uma migração. Se a reversão de imagem falhar, mantenha a borda restrita enquanto a operação recupera o serviço. Preserve a revisão anterior no GHCR e o registro `images.json` da operação.
 
+Na V24, `account_profiles` guarda nome/foto privados e `recurring_plans.hair_routine` conserva a rotina sugerida. As contas passam a aceitar somente `America/Sao_Paulo`. Antes de promover essa revisão, revalide backup/restore com 22 tabelas no total, incluindo Flyway, e com os dados sintéticos do perfil e do plano. Uma interface anterior que envia outro fuso é incompatível com o novo contrato; a reversão apenas das imagens para V23 precisa de ensaio específico. Preserve as migrações já aplicadas e mantenha o acesso restrito até validar a recuperação e a reversão.
+
 ## Restaurar dados e exercitar alertas
 
 1. Defina retenção e teste a recuperação para um ponto no tempo num destino isolado do PostgreSQL do provedor. Grave um cuidado fictício antes do alvo e outro depois. Verifique que o primeiro existe e que o segundo ficou fora do ponto restaurado. Confira papéis, Flyway e integridade, e registre a perda medida e o tempo até o fim do smoke autenticado.

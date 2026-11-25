@@ -33,7 +33,7 @@
           @for (entry of entries; track entry.id) {
             <li class="card diary-photo">
               <a [href]="photoUrl(entry.id)" target="_blank" rel="noopener"
-                 [attr.aria-label]="'Abrir foto de ' + date(entry.date) + ' em nova aba'">
+                 [attr.aria-label]="'Abrir foto de ' + date(entry.date)">
                 <img [src]="photoUrl(entry.id)" alt="" loading="lazy">
               </a>
               <time [attr.datetime]="entry.date">{{ date(entry.date) }}</time>

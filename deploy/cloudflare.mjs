@@ -138,7 +138,7 @@ export class AgendaContainer {
 
   async smoke() {
     const preview = { startDate: new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10),
-      weeks: 1, weekdays: ['MONDAY', 'THURSDAY'], timeZone: 'UTC' };
+      weeks: 1, weekdays: ['MONDAY', 'THURSDAY'], timeZone: 'America/Sao_Paulo' };
     for (const [path, status, marker, body] of [
       ['/', 200, '<app-root'], ['/api/ready', 200, '"UP"'], ['/api/agenda', 401, ''],
       ['/api/forum/public/topics', 404, ''], ['/api/hair-plans/preview', 200, '"occurrences"', preview],

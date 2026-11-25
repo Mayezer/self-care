@@ -17,7 +17,7 @@
       <span class="material-symbol" aria-hidden="true">info</span>
       <div>
         <p>Você ainda não tem respostas salvas. Comece por onde quiser ou pule esta etapa.</p>
-        <a class="agenda-add" routerLink="/agenda">Pular e ir à agenda</a>
+        <a class="secondary" routerLink="/agenda">Pular e ir à agenda</a>
       </div>
     </div>
   }
@@ -43,7 +43,7 @@
           <legend>Curvatura</legend>
           <p class="hint" id="curl-hint">Escolha o grupo que mais se parece com seu cabelo. O subtipo é opcional.</p>
           @if (guidesAvailable()) {
-            <a class="agenda-add" [routerLink]="['/ajuda/guias', guideTopics.curl.id]">Consultar o guia visual</a>
+            <a class="secondary" [routerLink]="['/ajuda/guias', guideTopics.curl.id]">Consultar o guia visual</a>
           }
           <div class="curl-choices">
             @for (group of curlGroups; track group.value) {
@@ -58,6 +58,8 @@
                 <span>{{ group.label }} <small>{{ group.subtypes[0].code }}–{{ group.subtypes[2].code }}</small></span>
               </label>
             }
+          </div>
+          <div class="profile-choices">
             <label class="profile-choice">
               <input type="radio" name="curlPattern" value="MULTIPLE" [checked]="patternChoice() === 'MULTIPLE'"
                      [attr.aria-invalid]="errors().curlPattern ? 'true' : null"
@@ -214,7 +216,7 @@
           @if (hasSavedAnswers()) {
             <button class="secondary" type="button" data-clear-profile [disabled]="saving()" (click)="requestClear()">Limpar respostas</button>
           }
-          <a class="agenda-add" routerLink="/agenda">Voltar à agenda</a>
+          <a class="secondary" routerLink="/agenda">Voltar à agenda</a>
         </div>
       }
       @if (feedback() || hasErrors()) {
@@ -224,20 +226,18 @@
         {{ saveResult() === 'saved' ? 'Respostas salvas.' : saveResult() === 'cleared' ? 'Respostas do perfil removidas.' : '' }}
       </p>
       @if (saveResult() === 'saved' && showProducts()) {
-        <a class="agenda-add" routerLink="/meu-cabelo/produtos">Ver sugestões de produtos</a>
+        <a class="secondary" routerLink="/meu-cabelo/produtos">Ver sugestões de produtos</a>
       }
     </div>
   </form>
   @if (guidesAvailable()) {
     <div class="profile-actions profile-guide-footer">
-      <a class="agenda-add" [routerLink]="['/ajuda/guias', guideTopics.elasticity.id]">FAQ de elasticidade</a>
-      <a class="agenda-add" [routerLink]="['/ajuda/guias', guideTopics.porosity.id]">FAQ de porosidade</a>
+      <a class="secondary" [routerLink]="['/ajuda/guias', guideTopics.elasticity.id]">FAQ de elasticidade</a>
+      <a class="secondary" [routerLink]="['/ajuda/guias', guideTopics.porosity.id]">FAQ de porosidade</a>
+      <a class="secondary" routerLink="/ajuda" fragment="guias">Abrir todos os guias da Ajuda</a>
     </div>
   }
 }
 @if (state() !== 'ready') {
-  <a class="agenda-add" routerLink="/agenda">Voltar à agenda</a>
-}
-@if (guidesAvailable()) {
-  <a class="agenda-add" routerLink="/ajuda" fragment="guias">Abrir todos os guias da Ajuda</a>
+  <a class="secondary" routerLink="/agenda">Voltar à agenda</a>
 }

@@ -41,6 +41,7 @@ class PostgresqlMigrationTest {
             var jdbc = application.getBean(JdbcTemplate.class);
             assertMigrationsAppliedOnce(jdbc);
             assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM accounts WHERE username = 'legacy_test'", Integer.class));
+            assertEquals("America/Sao_Paulo", jdbc.queryForObject("SELECT time_zone FROM accounts WHERE username = 'legacy_test'", String.class));
             verifyExpiredRegistrationCleanup(application.getBean(AccountRepository.class), jdbc);
 
             var factory = application.getBean(EntityManagerFactory.class);
@@ -112,13 +113,13 @@ class PostgresqlMigrationTest {
                 var statement = connection.createStatement()) {
             statement.executeUpdate("""
                     INSERT INTO accounts (username, password_hash, time_zone)
-                    VALUES ('legacy_test', 'test-hash', 'America/Sao_Paulo')
+                    VALUES ('legacy_test', 'test-hash', 'UTC')
                     """);
         }
     }
 
     private static void assertMigrationsAppliedOnce(JdbcTemplate jdbc) {
-        for (int version = 1; version <= 23; version++) {
+        for (int version = 1; version <= 24; version++) {
             assertEquals(1, jdbc.queryForObject("""
                     SELECT count(*) FROM flyway_schema_history WHERE version = ? AND success
                     """, Integer.class, Integer.toString(version)));
@@ -131,17 +132,17 @@ class PostgresqlMigrationTest {
         String pending = "pending@example.test";
         String confirmed = "confirmed@example.test";
         String digest = "a".repeat(64);
-        assertEquals(1, accounts.issueConfirmation(expired, "UTC", digest, now, now));
-        assertEquals(1, accounts.issueConfirmation(pending, "UTC", digest, now.plusMinutes(5), now));
-        assertEquals(1, accounts.issueConfirmation(confirmed, "UTC", digest, now.plusMinutes(5), now));
-        assertEquals(1, accounts.confirm(confirmed, digest, now, "test-hash", "UTC"));
+        assertEquals(1, accounts.issueConfirmation(expired, "America/Sao_Paulo", digest, now, now));
+        assertEquals(1, accounts.issueConfirmation(pending, "America/Sao_Paulo", digest, now.plusMinutes(5), now));
+        assertEquals(1, accounts.issueConfirmation(confirmed, "America/Sao_Paulo", digest, now.plusMinutes(5), now));
+        assertEquals(1, accounts.confirm(confirmed, digest, now, "test-hash", "America/Sao_Paulo"));
 
         assertEquals(1, accounts.deleteExpiredRegistrations(now));
         assertEquals(0, accounts.deleteExpiredRegistrations(now));
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM accounts WHERE email = ?", Integer.class, expired));
         assertTrue(accounts.hasValidConfirmation(pending, digest, now));
         assertTrue(accounts.loginByEmail(confirmed).isPresent());
-        assertEquals(1, accounts.issueConfirmation(expired, "UTC", digest, now.plusMinutes(5), now));
+        assertEquals(1, accounts.issueConfirmation(expired, "America/Sao_Paulo", digest, now.plusMinutes(5), now));
         assertTrue(accounts.hasValidConfirmation(expired, digest, now));
     }
 

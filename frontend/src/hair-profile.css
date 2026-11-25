@@ -1,5 +1,6 @@
+.profile-section h2 { font-size: 1.125rem; }
 .profile-state { margin-block: var(--space-md); }
-.profile-state button { margin-top: var(--space-sm); }
+.profile-state :is(button, .secondary) { margin-top: var(--space-sm); }
 .profile-state p { font-size: inherit; }
 .hair-profile-form, .profile-fields, .profile-section { display: grid; gap: var(--space-md); }
 .profile-selects, .curl-choices {
@@ -8,6 +9,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .profile-selects { grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); }
+.profile-selects .field { align-content: end; }
 .curl-choices { margin-top: var(--space-sm); }
 .profile-choices, .profile-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
 .profile-choices { margin-top: var(--space-sm); }
@@ -38,12 +40,23 @@
   min-height: 0;
   margin: 0;
   padding: 0;
-  accent-color: var(--accent);
+  appearance: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--input-line);
+  border-radius: .25rem;
+  background: var(--surface);
 }
+.profile-choice input[type="radio"] { border-radius: var(--round); }
+.profile-choice input:checked { background: var(--primary); border-color: var(--primary); }
+.profile-choice input:checked::before { content: ''; }
+.profile-choice input[type="radio"]:checked::before { width: .45rem; height: .45rem; border-radius: var(--round); background: var(--on-accent); }
+.profile-choice input[type="checkbox"]:checked::before { width: .35rem; height: .6rem; border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: translateY(-1px) rotate(45deg); }
 .profile-choice input:focus-visible { outline: none; }
-.curl-choice svg { width: 2rem; flex: 0 0 auto; color: var(--hair-ink); }
-.curl-choice { display: grid; grid-template-columns: auto 1fr; }
-.curl-choice > span { grid-column: 1 / -1; }
+.curl-choice svg { width: 3rem; height: 2.25rem; flex: 0 0 auto; color: var(--hair-ink); }
+.curl-choice { position: relative; flex-direction: column; justify-content: center; text-align: center; padding: var(--space-lg) var(--space-sm) var(--space-md); }
+.curl-choice > input { position: absolute; inset: .625rem .625rem auto auto; }
+.curl-choice > span { font-weight: 600; }
 .curl-choice small { display: block; color: var(--muted); }
 .profile-section [type="month"] { max-width: 16rem; }
 .profile-guide-links { margin: 0; padding-inline-start: var(--space-lg); color: var(--muted); }

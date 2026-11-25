@@ -21,21 +21,13 @@
 
           @if (suggested()) {
             <div class="field">
-              <label for="hair-goal">Objetivo <span class="hint">(opcional)</span></label>
-              <select #goalInput id="hair-goal" [disabled]="saving()" (change)="changeGoal(goalInput.value)">
-                <option value="" [selected]="!goal()">Sem objetivo definido</option>
-                <option value="ORGANIZE" [selected]="goal() === 'ORGANIZE'">Organizar as lavagens</option>
-                @for (stage of treatmentStages; track stage.value) {
-                  <option [value]="stage.value" [selected]="goal() === stage.value">Incluir {{ stage.label.toLowerCase() }}</option>
-                }
-              </select>
               <label class="planner-profile-choice">
                 <input #useProfileInput type="checkbox" [checked]="useProfile()" [disabled]="saving()"
                        aria-describedby="planner-profile-hint" (change)="changeUseProfile(useProfileInput.checked)">
                 Usar as respostas salvas em Meu cabelo
               </label>
-              <p class="hint" id="planner-profile-hint">As respostas da sua conta são usadas quando você deixa o objetivo em branco.
-                <a class="agenda-add" href="/meu-cabelo" target="_blank" rel="noopener">Revisar Meu cabelo (nova aba)</a>
+              <p class="hint" id="planner-profile-hint">Vamos adaptar os cuidados de cada lavagem ao seu perfil, sem escolher produtos.
+                <a class="agenda-add" href="/meu-cabelo" target="_blank" rel="noopener">Revisar Meu cabelo</a>
               </p>
             </div>
           }
@@ -124,7 +116,7 @@
         </div>
         <div class="card editorial-card">
           <span class="editorial-icon material-symbol" aria-hidden="true">info</span>
-          <div><strong>Seus cosméticos</strong><p>Siga o rótulo do produto</p></div>
+          <div><strong>Seu perfil de cabelo</strong><p>Cuidados adaptados à sua rotina</p></div>
         </div>
       </div>
 
@@ -142,14 +134,14 @@
         }
       </p>
       <div class="planner-suggestion-status" role="status">
-        @if (!loading() && !outdated() && suggestionReason(); as reason) {
-          <p class="card hint">{{ reason }}</p>
+        @if (!loading() && !outdated() && routine(); as care) {
+          <section class="card"><app-hair-routine [routine]="care" view="summary" /></section>
         }
       </div>
 
       @if (occurrences().length) {
         <ol class="sessions hair-sessions" role="list">
-          @for (occurrence of occurrences(); track occurrence.date) {
+          @for (occurrence of occurrences(); track occurrence.date; let first = $first) {
             <li class="card hair-session" [attr.data-stage]="occurrence.stage">
               <div class="session-heading">
                 <time [id]="'stage-date-' + occurrence.date" [attr.datetime]="occurrence.date">
@@ -158,8 +150,14 @@
                 <span class="pill stage-pill">Semana {{ cycleWeek(occurrence.date) }}</span>
                 <span class="material-symbol" aria-hidden="true">{{ stageCues[occurrence.stage].icon }}</span>
               </div>
+              @if (!outdated() && routine(); as care) {
+                <details class="routine-details" [open]="first">
+                  <summary>Rotina deste dia <span class="pill">{{ care.steps.length }} passos</span></summary>
+                  <app-hair-routine [routine]="care" />
+                </details>
+              }
               <div class="field">
-                <label class="hint" [id]="'stage-label-' + occurrence.date" [for]="'stage-' + occurrence.date">Etapa da sessão</label>
+                <label class="hint" [id]="'stage-label-' + occurrence.date" [for]="'stage-' + occurrence.date">Cuidado extra (opcional)</label>
                 <select #stageInput [id]="'stage-' + occurrence.date" [disabled]="loading() || saving()"
                         [attr.aria-labelledby]="'stage-label-' + occurrence.date + ' stage-date-' + occurrence.date"
                         (change)="changeStage(occurrence.date, stageInput.value)">

@@ -4,6 +4,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
 import { filter, map } from 'rxjs';
 import { FallingDecor } from './falling-decor';
+import { AccountProfileState } from './account-profile-state';
 
 const THEMES = [
   { value: 'light', label: 'Jasmin', image: '/design/themes/jasmin.svg' },
@@ -17,6 +18,7 @@ const THEMES = [
   templateUrl: './shell.html',
 })
 export class Shell {
+  protected readonly profileState = inject(AccountProfileState);
   private readonly document = inject(DOCUMENT);
   private readonly injector = inject(Injector);
   private readonly router = inject(Router);

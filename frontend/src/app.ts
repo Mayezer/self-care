@@ -1,4 +1,6 @@
 import { PageHeading } from './page-heading';
+import { ACCOUNT_TIME_ZONE, accountToday } from './account-time-zone';
+import { HairRoutine, type HairRoutineData } from './hair-routine';
 import { isPlatformBrowser, Location } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { afterNextRender, Component, DestroyRef, ElementRef, inject, Injector, PLATFORM_ID, signal, viewChild } from '@angular/core';
@@ -7,14 +9,14 @@ import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { postWithCsrf } from './csrf';
 import { formatHairDate, readHairPreviewDraft, STAGES, WEEKDAYS } from './hair-preview-draft';
-import type { HairGoal, HairPlanRequest, HairPreviewDraft, HairPreviewState, HairSuggestionOptions, PreviewOccurrence, Stage, Weekday } from './hair-preview-draft';
+import type { HairPlanRequest, HairPreviewDraft, HairPreviewState, HairSuggestionOptions, PreviewOccurrence, Stage, Weekday } from './hair-preview-draft';
 
 type PreviewField = 'startDate' | 'weeks' | 'weekdays' | 'suggestion';
 type FieldErrors = Partial<Record<PreviewField | 'timeZone' | 'body' | 'occurrences' | 'requestId', string>>;
 
 interface PreviewResponse {
   occurrences: PreviewOccurrence[];
-  suggestion?: { reason: string };
+  suggestion?: HairRoutineData;
 }
 
 interface Occurrence extends PreviewOccurrence {
@@ -29,10 +31,10 @@ function shortSessionDate(date: string): string {
 }
 
 const STAGE_CUES: Record<Stage, { icon: string; hint: string }> = {
-  WASH_ONLY: { icon: 'spa', hint: 'Categoria relacionada: shampoo e condicionador.' },
-  HYDRATION: { icon: 'water_drop', hint: 'Categoria relacionada: máscara de hidratação.' },
-  NUTRITION: { icon: 'opacity', hint: 'Categorias relacionadas: máscara de nutrição ou óleo capilar.' },
-  RECONSTRUCTION: { icon: 'auto_awesome', hint: 'Categoria relacionada: máscara de reconstrução.' },
+  WASH_ONLY: { icon: 'spa', hint: 'Cuidado básico de lavagem e condicionamento.' },
+  HYDRATION: { icon: 'water_drop', hint: 'Hidratação adicionada por você nesta sessão.' },
+  NUTRITION: { icon: 'opacity', hint: 'Nutrição adicionada por você nesta sessão.' },
+  RECONSTRUCTION: { icon: 'auto_awesome', hint: 'Reconstrução adicionada por você nesta sessão.' },
 };
 
 function labelOccurrences(occurrences: readonly PreviewOccurrence[]): Occurrence[] {
@@ -42,15 +44,8 @@ function labelOccurrences(occurrences: readonly PreviewOccurrence[]): Occurrence
   }));
 }
 
-function localToday(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
-}
-
 @Component({
-  imports: [PageHeading],
+  imports: [PageHeading, HairRoutine],
   selector: 'app-planner',
   templateUrl: './app.html',
 })
@@ -70,7 +65,7 @@ export class App {
   private lastRequestId = this.draft?.requestId;
   private lastSavedDraft = this.draft && this.lastRequestId ? JSON.stringify({
     startDate: this.draft.startDate, weeks: this.draft.weeks,
-    weekdays: this.draft.weekdays, occurrences: this.draft.occurrences,
+    weekdays: this.draft.weekdays, occurrences: this.draft.occurrences, suggestion: this.draft.suggestion,
   }) : undefined;
   private previewSuggestion = this.draft?.suggestion;
   private datesOutdated = this.draft !== undefined;
@@ -80,20 +75,18 @@ export class App {
 
   protected readonly weekdays = WEEKDAYS;
   protected readonly stages = STAGES;
-  protected readonly treatmentStages = STAGES.filter(stage => stage.value !== 'WASH_ONLY');
   protected readonly durations = [2, 4, 8, 12];
   protected readonly stageCues = STAGE_CUES;
   protected readonly compactDate = shortSessionDate;
-  protected readonly timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  protected readonly timeZone = ACCOUNT_TIME_ZONE;
   protected readonly connectionMessage = signal('Verificando a conexão…');
-  protected readonly startDate = signal(this.draft?.startDate ?? (this.browser ? localToday() : ''));
+  protected readonly startDate = signal(this.draft?.startDate ?? (this.browser ? accountToday() : ''));
   private readonly previewStart = signal(this.startDate());
   protected readonly weeks = signal<number | null>(this.draft?.weeks ?? 2);
   protected readonly selectedDays = signal<readonly Weekday[]>(this.draft?.weekdays ?? []);
   protected readonly suggested = signal(this.previewSuggestion !== undefined);
   protected readonly useProfile = signal(this.previewSuggestion?.useProfile ?? true);
-  protected readonly goal = signal<HairGoal | ''>(this.previewSuggestion?.goal ?? '');
-  protected readonly suggestionReason = signal(this.draft?.suggestionReason ?? '');
+  protected readonly routine = signal<HairRoutineData | null>(this.draft?.routine ?? null);
   protected readonly occurrences = signal(labelOccurrences(this.draft?.occurrences ?? []));
   protected readonly errors = signal<FieldErrors>({});
   protected readonly requestError = signal('');
@@ -151,11 +144,6 @@ export class App {
     this.invalidatePreview('suggestion');
   }
 
-  protected changeGoal(goal: string): void {
-    this.goal.set(goal as HairGoal | '');
-    this.invalidatePreview('suggestion');
-  }
-
   protected changeUseProfile(useProfile: boolean): void {
     this.useProfile.set(useProfile);
     this.invalidatePreview('suggestion');
@@ -168,13 +156,13 @@ export class App {
     }
 
     // Keep the same identifier after a failed response or reload when the choices are unchanged.
-    const savedDraft = JSON.stringify(draft);
+    const savedDraft = JSON.stringify({ ...draft, suggestion: this.previewSuggestion });
     const requestId = (savedDraft === this.lastSavedDraft && this.lastRequestId) || crypto.randomUUID();
-    const request: HairPlanRequest = { ...draft, requestId };
+    const request: HairPlanRequest = { ...draft, requestId, ...(this.previewSuggestion ? { suggestion: this.previewSuggestion } : {}) };
     const resumeDraft: HairPreviewState = {
       ...request,
       suggestion: this.previewSuggestion,
-      suggestionReason: this.suggestionReason(),
+      routine: this.routine() ?? undefined,
       editedDates: [...this.editedStages.keys()],
     };
     this.lastRequestId = requestId;
@@ -239,18 +227,16 @@ export class App {
   }
 
   private suggestionOptions(): HairSuggestionOptions | undefined {
-    const goal = this.goal();
-    return this.suggested() ? { useProfile: this.useProfile(), ...(goal ? { goal } : {}) } : undefined;
+    return this.suggested() ? { useProfile: this.useProfile() } : undefined;
   }
 
   private suggestionChanged(suggestion: HairSuggestionOptions | undefined): boolean {
-    return suggestion?.goal !== this.previewSuggestion?.goal || suggestion?.useProfile !== this.previewSuggestion?.useProfile;
+    return suggestion?.useProfile !== this.previewSuggestion?.useProfile;
   }
 
   protected keepEdits(): void {
     this.suggested.set(this.previewSuggestion !== undefined);
     if (this.previewSuggestion) {
-      this.goal.set(this.previewSuggestion.goal ?? '');
       this.useProfile.set(this.previewSuggestion.useProfile);
     }
     this.outdated.set(this.datesOutdated);
@@ -273,7 +259,7 @@ export class App {
       weeks: this.weeks(),
       weekdays: this.selectedDays(),
       timeZone: this.timeZone,
-      ...(options && !resume ? { suggestion: options } : {}),
+      ...(options ? { suggestion: options } : {}),
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: ({ occurrences, suggestion }) => {
         const dates = new Set(occurrences.map(item => item.date));
@@ -283,7 +269,7 @@ export class App {
         this.occurrences.set(labelOccurrences(occurrences.map(({ date, stage }) => ({
           date, stage: stages.get(date) ?? stage,
         }))));
-        this.suggestionReason.set(resume?.suggestionReason ?? suggestion?.reason ?? '');
+        this.routine.set(suggestion ?? resume?.routine ?? null);
         this.previewSuggestion = options;
         this.previewStart.set(startDate);
         this.datesOutdated = false;

@@ -38,7 +38,11 @@
       </details>
       <a class="icon-button profile-button" routerLink="/perfil" aria-label="Perfil"
          [attr.aria-current]="page() === 'perfil' ? 'page' : null">
-        <span class="material-symbol" aria-hidden="true">person</span>
+        @if (profileState.photoUrl(); as photo) {
+          <img [src]="photo" alt="" width="44" height="44">
+        } @else {
+          <span class="material-symbol" aria-hidden="true">person</span>
+        }
       </a>
     </div>
   </div>

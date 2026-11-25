@@ -8,19 +8,16 @@ import { WebPushSettings } from './web-push-settings';
 
 const URL = '/api/agenda/reminder-preferences';
 type Category = keyof typeof CATEGORY_LABELS;
-type Field = 'enabled' | 'categories' | 'time' | 'timeZone';
+type Field = 'enabled' | 'categories' | 'time';
 type Errors = Partial<Record<Field | 'body', string>>;
 
 interface Preferences {
   enabled: boolean;
   categories: Category[];
   time: string | null;
-  timeZone: string;
 }
 
-interface Settings extends Preferences {
-  timeZones: string[];
-}
+type Settings = Preferences;
 
 @Component({
   selector: 'app-reminder-settings',
@@ -82,7 +79,7 @@ export class ReminderSettings {
   protected save(): void {
     const settings = this.settings();
     if (!settings || this.saving()) return;
-    const { enabled, categories, time, timeZone } = settings;
+    const { enabled, categories, time } = settings;
     this.notice.set('');
     const errors: Errors = {};
     if (enabled && !categories.length) errors.categories = 'Escolha pelo menos uma categoria.';
@@ -93,7 +90,7 @@ export class ReminderSettings {
     }
     this.errors.set({});
     this.saving.set(true);
-    putWithCsrf<Settings>(this.http, URL, { enabled, categories, time, timeZone })
+    putWithCsrf<Settings>(this.http, URL, { enabled, categories, time })
       .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
         next: saved => {
           this.settings.set(saved);

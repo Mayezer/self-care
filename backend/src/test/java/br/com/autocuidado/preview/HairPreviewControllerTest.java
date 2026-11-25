@@ -85,18 +85,19 @@ class HairPreviewControllerTest {
         }
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = {"HYDRATION", "NUTRITION", "RECONSTRUCTION"})
-    void schedulesTheChosenStageOnlyOnTheFirstGeneratedDate(String goal) throws Exception {
-        submit(suggest("{\"goal\":\"%s\",\"useProfile\":true}".formatted(goal)))
+    @Test
+    void suppliesAFullCareRoutineForEveryDateWithoutInferringTreatmentIntervals() throws Exception {
+        submit(suggest("{\"useProfile\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
-                .andExpect(jsonPath("$.suggestion.status").value("MODEL_SELECTED"))
-                .andExpect(jsonPath("$.suggestion.version").value(1))
-                .andExpect(jsonPath("$.suggestion.reviewedOn").value("2026-11-13"))
+                .andExpect(jsonPath("$.suggestion.modelId").value("daily-hair-care"))
+                .andExpect(jsonPath("$.suggestion.version").value(2))
+                .andExpect(jsonPath("$.suggestion.reviewedOn").value("2026-11-23"))
+                .andExpect(jsonPath("$.suggestion.steps.length()").value(4))
+                .andExpect(jsonPath("$.suggestion.personalized").value(false))
                 .andExpect(jsonPath("$.occurrences.length()").value(4))
                 .andExpect(jsonPath("$.occurrences[0].date").value("2026-11-12"))
-                .andExpect(jsonPath("$.occurrences[0].stage").value(goal))
+                .andExpect(jsonPath("$.occurrences[0].stage").value("WASH_ONLY"))
                 .andExpect(jsonPath("$.occurrences[1].date").value("2026-11-16"))
                 .andExpect(jsonPath("$.occurrences[1].stage").value("WASH_ONLY"))
                 .andExpect(jsonPath("$.occurrences[3].stage").value("WASH_ONLY"));
@@ -104,10 +105,11 @@ class HairPreviewControllerTest {
     }
 
     @Test
-    void fallsBackToWashingWhenAVisitorHasNoGoal() throws Exception {
+    void offersGeneralCareWhenTheVisitorHasNoSavedProfile() throws Exception {
         submit(suggest("{\"useProfile\":true}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.suggestion.status").value("INSUFFICIENT_ANSWERS"))
+                .andExpect(jsonPath("$.suggestion.personalized").value(false))
+                .andExpect(jsonPath("$.suggestion.steps[0].id").value("cleanse"))
                 .andExpect(jsonPath("$.occurrences[0].stage").value("WASH_ONLY"));
         verifyNoInteractions(profiles, plans);
     }
@@ -157,8 +159,7 @@ class HairPreviewControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.startDate").isString())
                 .andExpect(jsonPath("$.errors.weeks").isString())
-                .andExpect(jsonPath("$.errors.weekdays").isString())
-                .andExpect(jsonPath("$.errors.timeZone").isString());
+                .andExpect(jsonPath("$.errors.weekdays").isString());
     }
 
     @Test
@@ -169,18 +170,21 @@ class HairPreviewControllerTest {
     }
 
     @Test
-    void validatesTodayInTheSubmittedZone() throws Exception {
+    void usesTheSaoPauloDayForVisitorsAndRejectsChangingTheZone() throws Exception {
         submit(payload("2026-11-09", "1", "[\"MONDAY\"]", "America/Sao_Paulo"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.occurrences[0].date").value("2026-11-09"));
         submit(payload("2026-11-09", "1", "[\"MONDAY\"]", "UTC"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.errors.startDate").isString());
+                .andExpect(jsonPath("$.errors.timeZone").isString());
+        submit("{\"startDate\":\"2026-11-09\",\"weeks\":1,\"weekdays\":[\"MONDAY\"]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.occurrences[0].date").value("2026-11-09"));
     }
 
     @Test
     void rejectsAnIntervalThatCannotBeRepresentedWithFourDigitYears() throws Exception {
-        submit(payload("9999-12-31", "2", "[\"MONDAY\"]", "UTC"))
+        submit(payload("9999-12-31", "2", "[\"MONDAY\"]", "America/Sao_Paulo"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.startDate").isString());
     }

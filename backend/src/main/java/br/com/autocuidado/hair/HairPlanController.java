@@ -2,7 +2,6 @@ package br.com.autocuidado.hair;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,14 +61,10 @@ public class HairPlanController {
         var errors = new LinkedHashMap<String, String>();
         var schedule = RecurrenceRequest.parse(request, errors);
         var suggestion = parseSuggestion(request.path("suggestion"), errors);
-        ZoneId zone = account == null ? null : timeZones.current(account.accountId());
-        if (zone == null) {
-            JsonNode timeZone = request.path("timeZone");
-            if (timeZone.isString() && AccountTimeZones.isValid(timeZone.asString())) {
-                zone = ZoneId.of(timeZone.asString());
-            } else {
-                errors.put("timeZone", "Informe um fuso horário IANA válido, como America/Sao_Paulo.");
-            }
+        ZoneId zone = AccountTimeZones.DEFAULT_ZONE;
+        if (request.has("timeZone") && (!request.path("timeZone").isString()
+                || !AccountTimeZones.isValid(request.path("timeZone").asString()))) {
+            errors.put("timeZone", "A agenda usa sempre o horário de São Paulo (America/Sao_Paulo).");
         }
         if (!errors.isEmpty()) {
             return invalidFields(errors);
@@ -81,15 +76,12 @@ public class HairPlanController {
                     .map(date -> new Occurrence(date, HairStage.WASH_ONLY)).toList()));
         }
 
-        var profile = profileEnabled && account != null && suggestion.useProfile() && suggestion.goal() == null
+        var profile = profileEnabled && account != null && suggestion.useProfile()
                 ? profiles.find(account.accountId()) : JsonNodeFactory.instance.objectNode();
-        var selection = HairScheduleModel.select(suggestion.goal(), profile);
-        var occurrences = new ArrayList<Occurrence>(dates.size());
-        for (int index = 0; index < dates.size(); index++) {
-            occurrences.add(new Occurrence(dates.get(index), selection.stageAt(index)));
-        }
+        var routine = HairCareRoutine.from(profile);
+        var occurrences = dates.stream().map(date -> new Occurrence(date, HairStage.WASH_ONLY)).toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(new SuggestedPreview(occurrences, selection.explanation()));
+                .body(new SuggestedPreview(occurrences, routine));
     }
 
     @PostMapping(path = "/api/hair-plans", consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -102,14 +94,17 @@ public class HairPlanController {
         var schedule = RecurrenceRequest.parse(request, errors);
         UUID requestId = RecurrenceRequest.parseRequestId(request.path("requestId"), errors);
         Map<LocalDate, HairStage> stages = parseStages(request.path("occurrences"), errors);
+        var suggestion = parseSuggestion(request.path("suggestion"), errors);
         if (request.has("accountId") || request.has("planId")) {
             errors.put("body", "A conta é identificada pela sessão e o plano recebe um novo identificador.");
         }
         if (!errors.isEmpty()) {
             return invalidFields(errors);
         }
-        long planId = plans.create(account, requestId, schedule.startDate(), schedule.weeks(),
-                schedule.weekdays(), stages);
+        long planId = suggestion == null
+                ? plans.create(account, requestId, schedule.startDate(), schedule.weeks(), schedule.weekdays(), stages)
+                : plans.create(account, requestId, schedule.startDate(), schedule.weeks(), schedule.weekdays(), stages,
+                        suggestion.useProfile());
         return ResponseEntity.status(HttpStatus.CREATED).body(new CreatedPlan(planId));
     }
 
@@ -152,21 +147,12 @@ public class HairPlanController {
             return null;
         }
         var useProfile = value.path("useProfile");
-        if (!value.isObject() || !Set.of("goal", "useProfile").containsAll(value.propertyNames())
+        if (!value.isObject() || !Set.of("useProfile").containsAll(value.propertyNames())
                 || (!useProfile.isMissingNode() && !useProfile.isBoolean())) {
-            errors.put("suggestion", "Informe apenas o objetivo e se deseja usar as respostas de Meu cabelo.");
+            errors.put("suggestion", "Informe apenas se deseja usar as respostas de Meu cabelo. Etapas opcionais são escolhidas em cada sessão.");
             return null;
         }
-        var goal = value.path("goal");
-        if (goal.isMissingNode()) {
-            return new SuggestionRequest(null, useProfile.asBoolean(false));
-        }
-        try {
-            return new SuggestionRequest(HairScheduleModel.valueOf(goal.asString("")), useProfile.asBoolean(false));
-        } catch (IllegalArgumentException exception) {
-            errors.put("suggestion", "Escolha um objetivo válido ou deixe o campo em branco.");
-            return null;
-        }
+        return new SuggestionRequest(useProfile.asBoolean(false));
     }
 
     @ExceptionHandler(InvalidRecurrenceException.class)
@@ -195,8 +181,8 @@ public class HairPlanController {
     }
 
     record Preview(List<Occurrence> occurrences) {}
-    record SuggestedPreview(List<Occurrence> occurrences, HairScheduleModel.Explanation suggestion) {}
-    private record SuggestionRequest(HairScheduleModel goal, boolean useProfile) {}
+    record SuggestedPreview(List<Occurrence> occurrences, HairCareRoutine suggestion) {}
+    private record SuggestionRequest(boolean useProfile) {}
     record CreatedPlan(long planId) {}
     record FieldErrors(Map<String, String> errors) {}
 }

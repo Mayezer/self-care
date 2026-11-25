@@ -58,7 +58,7 @@ Open the [local app](http://127.0.0.1:4200/). The home screen requests `/api/hea
 
 To send verification, authenticator setup, and recovery codes, set `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, and `APP_AUTH_EMAIL_FROM` before starting the backend. When running the API directly, use `APP_AUTH_MFA_KEY` for the hex-encoded 32-byte key. In development, use a local SMTP server that captures outgoing mail. The `publicacao` profile configures STARTTLS and authentication. Activate `publicacao,cloudflare-mail` to use Cloudflare Email Sending over implicit TLS with a verified sender and `SPRING_MAIL_PASSWORD` provided by the secret store. Keep credentials outside the repository.
 
-1. In the planner (**Agenda**), select **Quero criar uma conta** (Create an account), enter a test email address, and request a code. Copy the code from Mailpit and choose a password between 15 and 128 characters long. The API needs access to the Pwned Passwords service to check for compromised passwords.
+1. In the planner (**Agenda**), select **Quero criar uma conta** (Create an account), enter a test email address, and request a code. Copy the code from Mailpit and choose a password of 8–128 characters with an uppercase letter, a lowercase letter, a digit, and a symbol. Spaces alone do not satisfy the symbol requirement. The API applies the same policy when changing or resetting a password and checks the Pwned Passwords service for compromised passwords.
 2. Sign in with your email and password. On your first sign-in, verify your email with the new code from Mailpit and add the setup key to a time-based one-time password (TOTP) authenticator app.
 3. Save the recovery key and confirm with a code from the authenticator. On subsequent sign-ins, use your password and a code from the app.
 
@@ -66,7 +66,7 @@ Registration is closed by default in the `publicacao` profile.
 
 ## Test the hair care schedule preview (FSD-03A)
 
-With the app running through Compose, send a start date, a duration in weeks, the selected weekdays, and an IANA time zone to `POST /api/hair-plans/preview`. Use port 4200 for the Angular development server. This public endpoint returns a preview without saving the plan.
+With the app running through Compose, send a start date, a duration in weeks, and the selected weekdays to `POST /api/hair-plans/preview`. All accounts use `America/Sao_Paulo`; omitting `timeZone` uses this default, and other zones are rejected. Use port 4200 for the Angular development server. This public endpoint returns a preview without saving the plan.
 
 ```sh
 start_date=$(TZ=America/Sao_Paulo date +%F)
@@ -75,11 +75,11 @@ curl -sS http://127.0.0.1:4222/api/hair-plans/preview \
   --data "{\"startDate\":\"${start_date}\",\"weeks\":2,\"weekdays\":[\"MONDAY\",\"THURSDAY\"],\"timeZone\":\"America/Sao_Paulo\"}"
 ```
 
-The HTTP 200 response contains `occurrences`, with each `date` in `YYYY-MM-DD` format and `stage` set to `WASH_ONLY` (Wash only). Invalid inputs return HTTP 400 with an `errors` object keyed by field name. Use uppercase weekday values from `MONDAY` to `SUNDAY`.
+The HTTP 200 response contains `occurrences`, with each `date` in `YYYY-MM-DD` format and `stage` set to `WASH_ONLY` (Washing and conditioning). Invalid inputs return HTTP 400 with an `errors` object keyed by field name. Use uppercase weekday values from `MONDAY` to `SUNDAY`.
 
 ## Resume a preview after signing in (FSD-04C)
 
-Generate a preview, customize a treatment stage, and select **Entrar para salvar na agenda** (Sign in to save to your planner). After you sign in, the form restores the date, duration, weekdays, and stages you selected. The API uses the account's time zone once you are signed in. If the start date has already passed in that time zone, adjust it and generate the preview again. The selected stages carry over for dates that appear in both previews.
+Generate a preview, customize a treatment stage, and select **Entrar para salvar na agenda** (Sign in to save to your planner). After you sign in, the form restores the date, duration, weekdays, and stages you selected. The API uses `America/Sao_Paulo` for both public previews and signed-in accounts. If the start date has already passed in São Paulo, adjust it and generate the preview again. The selected stages carry over for dates that appear in both previews.
 
 ## Build and test
 
@@ -94,6 +94,12 @@ GitHub Actions scans the Git history with Gitleaks, audits npm dependencies, bui
 Sign in to the local app with a test account. `GET /api/hair-profile` returns the signed-in account's answers, or `{}` if there are none. `PUT /api/hair-profile` requires the token from `/api/auth/csrf` and replaces all answers with the submitted object. For example, `{"rootOiliness":"RARELY"}` saves only the answer about oily roots, and `{}` clears the profile. An invalid answer returns HTTP 400 with field-level `errors` and leaves the saved profile unchanged. The planner, schedule, and history remain available with an empty profile.
 
 Compose module settings apply to the entire instance and preserve the database.
+
+## Test the private account profile and suggested routine
+
+In **Perfil**, save an optional name and upload, replace, or remove a JPEG/PNG photo of up to 5 MiB. The server normalizes photos to JPEG with a maximum edge of 512 pixels and strips metadata. Name and photo are private to the signed-in account. **Alterar senha** opens `/perfil/alterar-senha` and keeps the existing password/MFA checks and session revocation.
+
+In the planner, select **Receber sugestão** and use the saved hair profile. Each chosen date gets a complete washing, conditioning, detangling, and drying routine, adapted to supported profile answers. Saving a suggested plan preserves its instructions even after the profile changes. Hydration, nutrition, and reconstruction remain optional manual choices; profile answers do not establish validated treatment intervals. Suggestions organize care without selecting products.
 
 ## Test browser notifications (E2-10)
 

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 import br.com.autocuidado.persistence.AgendaReminderService;
+import br.com.autocuidado.persistence.AccountProfileStore;
 import jakarta.mail.internet.AddressException;
 import jakarta.mail.internet.InternetAddress;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,7 @@ class AccountController {
     private final Clock clock;
     private final AccountTimeZones timeZones;
     private final AgendaReminderService reminders;
+    private final AccountProfileStore profiles;
     private final boolean hairProfileAvailable;
     private final boolean hairProductsAvailable;
     private final boolean guidesAvailable;
@@ -42,6 +44,7 @@ class AccountController {
     private final boolean registrationEnabled;
 
     AccountController(EmailRegistration registration, Clock clock, AccountTimeZones timeZones, AgendaReminderService reminders,
+                      AccountProfileStore profiles,
                       @Value("${app.hair.profile-enabled:false}") boolean hairProfileAvailable,
                       @Value("${app.hair.products-enabled:false}") boolean hairProductsEnabled,
                       @Value("${app.help.guides-enabled:false}") boolean guidesAvailable,
@@ -54,6 +57,7 @@ class AccountController {
         this.clock = clock;
         this.timeZones = timeZones;
         this.reminders = reminders;
+        this.profiles = profiles;
         this.hairProfileAvailable = hairProfileAvailable;
         this.hairProductsAvailable = hairProfileAvailable && hairProductsEnabled;
         this.guidesAvailable = guidesAvailable;
@@ -104,8 +108,8 @@ class AccountController {
         }
         JsonNode passwordField = request.path("password");
         String password = passwordField.asString("");
-        if (!passwordField.isString() || !PasswordPolicy.validLength(password)) {
-            errors.put("password", "Use de 15 a 128 caracteres.");
+        if (!passwordField.isString() || !PasswordPolicy.validFormat(password)) {
+            errors.put("password", PasswordPolicy.REQUIREMENTS);
         }
         if (!errors.isEmpty()) {
             return ResponseEntity.badRequest().body(new FieldErrors(errors));
@@ -124,7 +128,7 @@ class AccountController {
         return new AgendaAccount(account.email() == null ? account.getUsername() : null,
                 account.email(), zone.getId(), LocalDate.now(clock.withZone(zone)), reminders.available(),
                 hairProfileAvailable, hairProductsAvailable, guidesAvailable, forumAvailable, billingAvailable, hairDiaryAvailable,
-                registrationEnabled, forumPublicReadingAvailable);
+                registrationEnabled, forumPublicReadingAvailable, profiles.find(account.accountId()));
     }
 
     @GetMapping("/api/help/features")
@@ -181,7 +185,7 @@ class AccountController {
     record AgendaAccount(String username, String email, String timeZone, LocalDate today, boolean remindersAvailable,
                          boolean hairProfileAvailable, boolean hairProductsAvailable, boolean guidesAvailable, boolean forumAvailable,
                          boolean billingAvailable, boolean hairDiaryAvailable, boolean registrationEnabled,
-                         boolean forumPublicReadingAvailable) {}
+                         boolean forumPublicReadingAvailable, AccountProfileStore.Profile profile) {}
 
     record HelpFeatures(boolean guidesAvailable, boolean forumAvailable) {}
 }

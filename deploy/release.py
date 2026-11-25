@@ -46,7 +46,7 @@ def smoke(config):
     check("/api/forum/public/topics", 404, "")
     check("/api/hair-plans/preview", 200, '"occurrences"', {
         "startDate": (date.today() + timedelta(days=2)).isoformat(), "weeks": 1,
-        "weekdays": ["MONDAY", "THURSDAY"], "timeZone": "UTC",
+        "weekdays": ["MONDAY", "THURSDAY"], "timeZone": "America/Sao_Paulo",
     })
 
 

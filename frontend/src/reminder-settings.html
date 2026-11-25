@@ -9,12 +9,12 @@
   <form #form class="card reminder-form" novalidate (submit)="$event.preventDefault(); save()">
     <fieldset class="reminder-fields" [disabled]="saving()">
       <legend class="visually-hidden">Preferências de lembretes</legend>
-      <label class="reminder-choice">
-        <input #activation type="checkbox" [checked]="current.enabled"
+      <label class="reminder-activation">
+        <input #activation role="switch" class="reminder-switch" type="checkbox" [checked]="current.enabled"
                [attr.aria-invalid]="errors().enabled ? 'true' : null"
                [attr.aria-describedby]="errors().enabled ? 'reminder-enabled-error' : null"
                (change)="edit('enabled', activation.checked)">
-        <strong>Ativar lembretes na agenda</strong>
+        <span><strong>Ativar lembretes na agenda</strong><span class="hint">Veja os avisos dos seus cuidados no horário escolhido.</span></span>
       </label>
       @if (errors().enabled; as message) {
         <p id="reminder-enabled-error" class="field-error" role="alert">{{ message }}</p>
@@ -50,20 +50,7 @@
         }
       </div>
 
-      <div class="field">
-        <label for="reminder-zone">Fuso horário da conta</label>
-        <select #zone id="reminder-zone" [attr.aria-invalid]="errors().timeZone ? 'true' : null"
-                [attr.aria-describedby]="errors().timeZone ? 'reminder-zone-hint reminder-zone-error' : 'reminder-zone-hint'"
-                (change)="edit('timeZone', zone.value)">
-          @for (id of current.timeZones; track id) {
-            <option [value]="id" [selected]="current.timeZone === id">{{ id }}</option>
-          }
-        </select>
-        <p id="reminder-zone-hint" class="hint">O fuso define quando o dia vira na agenda. As datas dos cuidados salvos continuam as mesmas.</p>
-        @if (errors().timeZone; as message) {
-          <p id="reminder-zone-error" class="field-error" role="alert">{{ message }}</p>
-        }
-      </div>
+      <p class="hint">Os horários seguem o horário de Brasília.</p>
     </fieldset>
     @if (errors().body; as message) {
       <p data-save-error tabindex="-1" class="field-error" role="alert">{{ message }}</p>

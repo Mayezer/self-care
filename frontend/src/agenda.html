@@ -1,7 +1,8 @@
 @if (showNewCare && account(); as current) {
   <app-new-care [today]="current.today" />
 } @else {
-  <div class="page-width page-content" [class.history-page]="showHistory" [class.hair-profile-page]="showHairProfile || showHairProducts || showHairDiary || showReminders">
+  <div class="page-width page-content" [class.history-page]="showHistory" [class.account-page]="showProfile"
+       [class.hair-settings-page]="showHairProfile" [class.hair-profile-page]="showHairProfile || showHairProducts || showHairDiary || showReminders">
     @if (account(); as current) {
       @if (showProfile) {
         <header appPageHeading="person">
@@ -9,59 +10,76 @@
           <h1 #heading tabindex="-1">Perfil</h1>
           <p>Gerencie seus dados, sessões e preferências de cuidado.</p>
         </header>
-        <section class="card agenda-card" aria-label="Configurações da conta">
-          <div class="profile-account">
-            <span class="editorial-icon material-symbol" aria-hidden="true">person</span>
-            <div>
-              <h2>Minha conta</h2>
-              <p>{{ current.email ?? current.username }}</p>
-            </div>
-          </div>
+        <div class="profile-layout">
+          <app-account-profile [identifier]="current.email ?? current.username ?? ''" (sessionExpired)="loadAgenda()" />
+          <section class="card profile-links" aria-labelledby="profile-care-title">
+            <h2 id="profile-care-title">Suas rotinas</h2>
+            @if (current.hairProfileAvailable) {
+              <a class="profile-hair-link" routerLink="/meu-cabelo">
+                <span class="category-icon" data-category="HAIR" aria-hidden="true"><span class="material-symbol">spa</span></span>
+                <span><strong>Meu cabelo</strong><span class="hint">Respostas e rotina de cuidado</span></span>
+                <span class="material-symbol" aria-hidden="true">chevron_right</span>
+              </a>
+            }
+            <a class="profile-hair-link" routerLink="/penteadeira">
+              <span class="category-icon material-symbol" data-category="MAKEUP" aria-hidden="true">auto_awesome</span>
+              <span><strong>Penteadeira</strong><span class="hint">Sua lista privada de maquiagem</span></span>
+              <span class="material-symbol" aria-hidden="true">chevron_right</span>
+            </a>
+            @if (current.hairDiaryAvailable) {
+              <a class="profile-hair-link" routerLink="/diario-capilar">
+                <span class="editorial-icon material-symbol" aria-hidden="true">photo_camera</span>
+                <span><strong>Diário capilar</strong><span class="hint">Fotos privadas da sua evolução</span></span>
+                <span class="material-symbol" aria-hidden="true">chevron_right</span>
+              </a>
+            }
+            @if (current.forumPublicReadingAvailable) {
+              <a class="profile-hair-link" routerLink="/forum">
+                <span class="editorial-icon material-symbol" aria-hidden="true">forum</span>
+                <span><strong>Fórum</strong><span class="hint">Relatos e avaliações de produtos</span></span>
+                <span class="material-symbol" aria-hidden="true">chevron_right</span>
+              </a>
+            }
+          </section>
+          <section class="card profile-links" aria-labelledby="profile-settings-title">
+            <h2 id="profile-settings-title">Configurações da conta</h2>
+            <a class="profile-hair-link" routerLink="/perfil/alterar-senha">
+              <span class="editorial-icon material-symbol" aria-hidden="true">lock</span>
+              <span><strong>Alterar senha</strong><span class="hint">Atualize sua senha com segurança</span></span>
+              <span class="material-symbol" aria-hidden="true">chevron_right</span>
+            </a>
+            @if (current.remindersAvailable) {
+              <a class="profile-hair-link" routerLink="/configuracoes/lembretes">
+                <span class="editorial-icon material-symbol" aria-hidden="true">notifications</span>
+                <span><strong>Lembretes</strong><span class="hint">Escolha categorias e horário dos avisos</span></span>
+                <span class="material-symbol" aria-hidden="true">chevron_right</span>
+              </a>
+            }
+            @if (current.billingAvailable) {
+              <a class="profile-hair-link" routerLink="/configuracoes/assinatura">
+                <span class="editorial-icon material-symbol" aria-hidden="true">credit_card</span>
+                <span><strong>Assinatura</strong><span class="hint">Gerencie seu plano</span></span>
+                <span class="material-symbol" aria-hidden="true">chevron_right</span>
+              </a>
+            }
+          </section>
           <app-account-sessions (signedOut)="sessionsEnded()" (sessionExpired)="loadAgenda()" />
+          <section class="card profile-logout" aria-label="Sair da conta">
+            <div><h2>Terminou por agora?</h2><p class="hint">Você pode voltar aos seus cuidados quando quiser.</p></div>
+            <button class="secondary" type="button" [disabled]="pending()" (click)="logout()">
+              <span class="material-symbol" aria-hidden="true">logout</span>{{ pending() ? 'Saindo…' : 'Sair da conta' }}
+            </button>
+            @if (error(); as message) { <p class="field-error" role="alert">{{ message }}</p> }
+          </section>
+        </div>
+      } @else if (showPasswordChange) {
+        <header appPageHeading="lock">
+          <p class="eyebrow">Segurança da conta</p>
+          <h1 #heading tabindex="-1">Alterar senha</h1>
+          <p>Confirme sua senha atual e um código do autenticador. A troca encerra as sessões da sua conta.</p>
+        </header>
+        <section class="card agenda-card" aria-label="Alterar senha da conta">
           <app-password-change (changed)="sessionsEnded('Senha alterada. Entre com a nova senha.')" (sessionExpired)="loadAgenda()" />
-          @if (current.hairProfileAvailable) {
-            <a class="profile-hair-link" routerLink="/meu-cabelo">
-              <span class="category-icon" data-category="HAIR" aria-hidden="true"><span class="material-symbol">spa</span></span>
-              <span><strong>Meu cabelo</strong><span class="hint">Perfil opcional e privado</span></span>
-              <span class="material-symbol" aria-hidden="true">chevron_right</span>
-            </a>
-          }
-          <a class="profile-hair-link" routerLink="/penteadeira">
-            <span class="category-icon material-symbol" data-category="MAKEUP" aria-hidden="true">auto_awesome</span>
-            <span><strong>Penteadeira</strong><span class="hint">Sua lista privada de maquiagem</span></span>
-            <span class="material-symbol" aria-hidden="true">chevron_right</span>
-          </a>
-          @if (current.hairDiaryAvailable) {
-            <a class="profile-hair-link" routerLink="/diario-capilar">
-              <span class="category-icon" data-category="HAIR" aria-hidden="true"><span class="material-symbol">photo_camera</span></span>
-              <span><strong>Diário capilar</strong><span class="hint">Fotos privadas da sua evolução</span></span>
-              <span class="material-symbol" aria-hidden="true">chevron_right</span>
-            </a>
-          }
-          @if (current.forumPublicReadingAvailable) {
-            <a class="profile-hair-link" routerLink="/forum">
-              <span class="material-symbol" aria-hidden="true">forum</span>
-              <span><strong>Fórum</strong><span class="hint">Relatos e avaliações de produtos</span></span>
-              <span class="material-symbol" aria-hidden="true">chevron_right</span>
-            </a>
-          }
-          @if (current.remindersAvailable || current.billingAvailable) {
-            <section aria-labelledby="profile-settings-title">
-              <h2 id="profile-settings-title">Configurações</h2>
-              @if (current.remindersAvailable) {
-                <a class="agenda-add" routerLink="/configuracoes/lembretes">Lembretes</a>
-              }
-              @if (current.billingAvailable) {
-                <a class="agenda-add" routerLink="/configuracoes/assinatura">Assinatura</a>
-              }
-            </section>
-          }
-          <button class="secondary" type="button" [disabled]="pending()" (click)="logout()">
-            {{ pending() ? 'Saindo…' : 'Sair da conta' }}
-          </button>
-          @if (error(); as message) {
-            <p class="field-error" role="alert">{{ message }}</p>
-          }
         </section>
       } @else if (showVanity) {
         <header appPageHeading="auto_awesome">
@@ -229,13 +247,15 @@
           <label for="account-password">Senha</label>
           <input #passwordInput id="account-password" name="password" type="password" required
                  [disabled]="mode() === 'register'"
+                 [attr.minlength]="mode() === 'confirm' ? 8 : null" [attr.maxlength]="mode() === 'confirm' ? 256 : null"
+                 [attr.pattern]="mode() === 'confirm' ? passwordPattern : null"
                  [attr.autocomplete]="mode() === 'confirm' ? 'new-password' : 'current-password'"
                  [attr.aria-invalid]="errors().password ? 'true' : null"
                  [attr.aria-describedby]="errors().password ? 'account-password-error' : mode() === 'confirm' ? 'password-hint' : null">
           @if (errors().password; as message) {
             <p class="field-error" id="account-password-error">{{ message }}</p>
           } @else if (mode() === 'confirm') {
-            <p class="hint" id="password-hint">Use de 15 a 128 caracteres.</p>
+            <p class="hint" id="password-hint">{{ passwordHint }}</p>
           }
         </div>
         <button class="primary" type="submit" [disabled]="pending()">

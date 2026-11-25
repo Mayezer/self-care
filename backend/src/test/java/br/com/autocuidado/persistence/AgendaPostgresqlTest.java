@@ -35,6 +35,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,6 +45,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @Tag("postgresql")
 class AgendaPostgresqlTest {
@@ -73,10 +75,11 @@ class AgendaPostgresqlTest {
             try {
                 UUID originalId = UUID.randomUUID();
                 try (var previous = new SpringApplicationBuilder(SelfCareApplication.class).web(WebApplicationType.NONE)
-                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=18")) {
+                        .run("--spring.datasource.url=" + url, "--spring.flyway.target=18",
+                                "--spring.jpa.hibernate.ddl-auto=none")) {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
-                    long free = insertAccount(jdbc, "forum_free", hash, "UTC");
+                    long free = insertAccount(jdbc, "forum_free", hash, "America/Sao_Paulo");
                     long paid = insertAccount(jdbc, "forum_paid", hash, "America/Sao_Paulo");
                     jdbc.update("""
                             INSERT INTO billing_accounts (account_id, customer_request_id, subscription_exists, access_until)
@@ -210,7 +213,7 @@ class AgendaPostgresqlTest {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
                     insertAccount(jdbc, "forum_owner", hash, "Asia/Tokyo");
-                    insertAccount(jdbc, "forum_other", hash, "UTC");
+                    insertAccount(jdbc, "forum_other", hash, "America/Sao_Paulo");
                 }
                 try (var app = new SpringApplicationBuilder(SelfCareApplication.class, MutableClockConfiguration.class)
                         .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url,
@@ -353,7 +356,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 var hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 insertAccount(jdbc, "cleaning_sp", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "cleaning_utc", hash, "UTC");
+                insertAccount(jdbc, "cleaning_utc", hash, "America/Sao_Paulo");
                 var owner = new Session(origin(app));
                 var other = new Session(origin(app));
                 owner.get(path, 401);
@@ -363,8 +366,8 @@ class AgendaPostgresqlTest {
                 assertEquals(14, empty.path("defaultInterval").asInt());
                 assertEquals("2026-11-30", empty.path("today").asString());
                 assertTrue(empty.path("schedules").isEmpty());
-                assertEquals("2026-12-01", JSON.readTree(other.get(path, 200)).path("today").asString());
-                other.put(brushes, create, true, 400);
+                assertEquals("2026-11-30", JSON.readTree(other.get(path, 200)).path("today").asString());
+                other.put(brushes, create.replace("2026-11-30", "2026-11-29"), true, 400);
                 owner.put(brushes, create, false, 403);
                 owner.put(brushes, create.replace("14", "0"), true, 400);
                 owner.put(brushes, create.replace("14", "14.5"), true, 400);
@@ -488,7 +491,7 @@ class AgendaPostgresqlTest {
                 {"enabled":true,"categories":["SKIN","MAKEUP"],"time":"08:30","timeZone":"America/Sao_Paulo"}
                 """;
         String edited = """
-                {"enabled":true,"categories":["SKIN"],"time":"19:15","timeZone":"UTC"}
+                {"enabled":true,"categories":["SKIN"],"time":"19:15","timeZone":"America/Sao_Paulo"}
                 """;
 
         try (var connection = DriverManager.getConnection(database, System.getenv("SPRING_DATASOURCE_USERNAME"),
@@ -525,7 +528,7 @@ class AgendaPostgresqlTest {
                     assertEquals("America/Sao_Paulo", defaults.path("timeZone").asString());
                     session.put(REMINDERS, active, false, 403);
                     assertTrue(other.put(REMINDERS, """
-                            {"accountId":%d,"enabled":false,"categories":[],"time":null,"timeZone":"UTC"}
+                            {"accountId":%d,"enabled":false,"categories":[],"time":null,"timeZone":"America/Sao_Paulo"}
                             """.formatted(owner), true, 400).at("/errors/body").isString());
                     var errors = session.put(REMINDERS, """
                             {"enabled":true,"categories":[],"time":"24:00","timeZone":"+03:00"}
@@ -581,15 +584,16 @@ class AgendaPostgresqlTest {
                     assertTrue(item(session.week(""), skin).path("reminderTime").isNull());
                     assertEquals("08:30", item(session.week(""), makeup).path("reminderTime").asString());
                     session.put(REMINDERS, edited, true, 200);
+                    app.getBean(MutableTime.class).instant().set(Instant.parse("2026-11-10T03:00:00Z"));
                     var week = device.week("");
                     assertEquals("2026-11-10", week.path("today").asString());
-                    assertEquals("UTC", JSON.readTree(device.get("/api/agenda", 200)).path("timeZone").asString());
+                    assertEquals("America/Sao_Paulo", JSON.readTree(device.get("/api/agenda", 200)).path("timeZone").asString());
                     assertEquals("2026-11-11", item(week, skin).path("date").asString());
                     assertEquals("19:15", item(week, skin).path("reminderTime").asString());
                     var overdue = item(week, "overdue", makeup);
                     assertEquals("2026-11-09", overdue.path("date").asString());
                     assertTrue(overdue.path("reminderTime").isNull());
-                    assertEquals("2026-11-09", other.week("").path("today").asString());
+                    assertEquals("2026-11-10", other.week("").path("today").asString());
 
                     var disabled = session.put(REMINDERS, edited.replace("true", "false"), true, 200);
                     assertFalse(disabled.path("enabled").asBoolean());
@@ -603,7 +607,7 @@ class AgendaPostgresqlTest {
                     session.get(REMINDERS, 404);
                     session.put(REMINDERS, active, true, 404);
                     assertTrue(item(session.week(""), skin).path("reminderTime").isNull());
-                    assertEquals("UTC", JSON.readTree(session.get("/api/agenda", 200)).path("timeZone").asString());
+                    assertEquals("America/Sao_Paulo", JSON.readTree(session.get("/api/agenda", 200)).path("timeZone").asString());
                 }
                 try (var restarted = startReminderApp(url, true)) {
                     var session = new Session(origin(restarted));
@@ -618,9 +622,11 @@ class AgendaPostgresqlTest {
     }
 
     private static ConfigurableApplicationContext startReminderApp(String url, boolean enabled) {
-        return new SpringApplicationBuilder(SelfCareApplication.class, FixedClock.class)
+        var app = new SpringApplicationBuilder(SelfCareApplication.class, MutableClockConfiguration.class)
                 .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url,
                         "--app.agenda.reminders-enabled=" + enabled);
+        app.getBean(MutableTime.class).instant().set(Instant.parse("2026-11-10T01:00:00Z"));
+        return app;
     }
 
     private static String origin(ConfigurableApplicationContext app) {
@@ -651,7 +657,7 @@ class AgendaPostgresqlTest {
                     var jdbc = previous.getBean(JdbcTemplate.class);
                     var hash = previous.getBean(PasswordEncoder.class).encode(PASSWORD);
                     owner = insertAccount(jdbc, "daily_sp", hash, "America/Sao_Paulo");
-                    other = insertAccount(jdbc, "daily_utc", hash, "UTC");
+                    other = insertAccount(jdbc, "daily_utc", hash, "America/Sao_Paulo");
                 }
                 try (var app = startDailyMessageApp(url, midnight)) {
                     var jdbc = app.getBean(JdbcTemplate.class);
@@ -688,7 +694,7 @@ class AgendaPostgresqlTest {
                     var utc = new Session(origin);
                     utc.login("daily_utc");
                     utc.dailyMessage();
-                    assertEquals(start.plusDays(1), jdbc.queryForObject(
+                    assertEquals(start, jdbc.queryForObject(
                             "SELECT started_on FROM daily_message_rotations WHERE account_id = ?", LocalDate.class, other));
                     clock.set(midnight.plus(Duration.ofDays(1)));
                     next = device.dailyMessage();
@@ -721,16 +727,15 @@ class AgendaPostgresqlTest {
                     assertEquals(30, cycleNumbers.size());
                     secondCycleLast = previousMessage;
                     assertEquals("[]", session.get(HISTORY, 200));
-                    jdbc.update("UPDATE accounts SET time_zone = 'Pacific/Honolulu' WHERE id = ?", owner);
+                    assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+                            "UPDATE accounts SET time_zone = 'Pacific/Honolulu' WHERE id = ?", owner));
                     clock.set(midnight);
                     var travel = new Session(origin);
                     travel.login("daily_sp");
                     assertEquals(first, travel.dailyMessage());
                     clock.set(midnight.plus(Duration.ofDays(1)));
-                    assertEquals(first, travel.dailyMessage());
-                    clock.set(midnight.plus(Duration.ofDays(2)));
                     assertEquals(next, travel.dailyMessage());
-                    jdbc.update("UPDATE accounts SET time_zone = 'America/Sao_Paulo' WHERE id = ?", owner);
+                    assertEquals("America/Sao_Paulo", JSON.readTree(travel.get("/api/agenda", 200)).path("timeZone").asString());
                 }
                 try (var restarted = startDailyMessageApp(url, midnight.plus(Duration.ofDays(59)))) {
                     var session = new Session("http://127.0.0.1:"
@@ -770,7 +775,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 insertAccount(jdbc, "streak_sp", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "streak_utc", hash, "UTC");
+                insertAccount(jdbc, "streak_utc", hash, "America/Sao_Paulo");
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var session = new Session(origin);
                 var utc = new Session(origin);
@@ -778,7 +783,7 @@ class AgendaPostgresqlTest {
                 session.login("streak_sp");
                 utc.login("streak_utc");
                 assertEquals("2026-11-09", session.week("").path("today").asString());
-                assertEquals("2026-11-10", utc.week("").path("today").asString());
+                assertEquals("2026-11-09", utc.week("").path("today").asString());
 
                 session.post(HISTORY + "/nails", """
                         {"title":"Esmalte antigo","completedOn":"2026-11-05"}
@@ -805,11 +810,11 @@ class AgendaPostgresqlTest {
                 assertStreak(utc, "", 0);
 
                 utc.post(HISTORY + "/nails", """
-                        {"title":"Esmalte","completedOn":"2026-11-08"}
+                        {"title":"Esmalte","completedOn":"2026-11-07"}
                         """, true, 201);
                 assertStreak(utc, "", 0);
                 utc.post(HISTORY + "/makeup", """
-                        {"title":"Maquiagem leve","completedOn":"2026-11-09"}
+                        {"title":"Maquiagem leve","completedOn":"2026-11-08"}
                         """, true, 201);
                 assertStreak(utc, "", 2);
 
@@ -857,7 +862,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 insertAccount(jdbc, "dates_sp", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "dates_utc", hash, "UTC");
+                insertAccount(jdbc, "dates_utc", hash, "America/Sao_Paulo");
                 var saoPaulo = new Session(origin(app));
                 var utc = new Session(origin(app));
                 saoPaulo.login("dates_sp");
@@ -898,14 +903,16 @@ class AgendaPostgresqlTest {
 
                 time.set(Instant.parse("2026-11-15T02:59:59Z"));
                 assertEquals("2026-11-14", saoPaulo.week("").path("today").asString());
-                assertEquals(sunday, utc.week("").path("today").asString());
+                assertEquals("2026-11-14", utc.week("").path("today").asString());
                 saoPaulo.action(future, "complete", fridayCompletion, true, 409);
-                utc.action(utcCare, "complete", sundayCompletion, true, 204);
+                utc.action(utcCare, "complete", sundayCompletion, true, 400);
                 assertEquals("PLANNED", item(saoPaulo.week(""), "overdue", overdue).path("status").asString());
                 saoPaulo.action(overdue, "complete", fridayCompletion, true, 204);
 
                 time.set(Instant.parse("2026-11-15T03:00:00Z"));
                 assertEquals(sunday, saoPaulo.week("").path("today").asString());
+                assertEquals(sunday, utc.week("").path("today").asString());
+                utc.action(utcCare, "complete", sundayCompletion, true, 204);
                 saoPaulo.action(future, "complete", sundayCompletion, true, 204);
                 saoPaulo.action(future, "complete", fridayCompletion, true, 204);
                 var completed = saoPaulo.week("");
@@ -934,7 +941,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_direct", hash, "America/Sao_Paulo");
-                long other = insertAccount(jdbc, "other_direct", hash, "UTC");
+                long other = insertAccount(jdbc, "other_direct", hash, "America/Sao_Paulo");
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var session = new Session(origin);
                 var otherSession = new Session(origin);
@@ -1007,11 +1014,11 @@ class AgendaPostgresqlTest {
                 assertTrue(JSON.readTree(otherSession.get(HISTORY, 200)).isEmpty());
                 assertEquals(0, otherSession.week("").path("completedCount").asInt());
                 otherSession.post(makeupPath, """
-                        {"title":"Praticar delineado","completedOn":"2026-11-10"}
+                        {"title":"Praticar delineado","completedOn":"2026-11-09"}
                         """, true, 201);
                 var otherHistory = JSON.readTree(otherSession.get(HISTORY, 200));
                 assertEquals(1, otherHistory.size());
-                assertEquals("2026-11-10", otherHistory.at("/0/actionDate").asString());
+                assertEquals("2026-11-09", otherHistory.at("/0/actionDate").asString());
                 assertTrue(otherHistory.at("/0/note").isNull());
                 assertEquals(history, JSON.readTree(session.get(HISTORY, 200)));
             } finally {
@@ -1035,7 +1042,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 insertAccount(jdbc, "owner_beauty", hash, "America/Sao_Paulo");
-                long other = insertAccount(jdbc, "other_beauty", hash, "UTC");
+                long other = insertAccount(jdbc, "other_beauty", hash, "America/Sao_Paulo");
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var session = new Session(origin);
                 var otherSession = new Session(origin);
@@ -1065,8 +1072,8 @@ class AgendaPostgresqlTest {
                 assertTrue(invalidNails.at("/errors/polishColor").isString());
                 assertTrue(invalidNails.at("/errors/polishProduct").isString());
                 assertTrue(invalidNails.at("/errors/body").isString());
-                assertTrue(JSON.readTree(otherSession.post(MAKEUP, makeup, true, 400)).at("/errors/plannedDate").isString());
-                assertTrue(JSON.readTree(otherSession.post(NAILS, nails, true, 400)).at("/errors/plannedDate").isString());
+                assertTrue(JSON.readTree(otherSession.post(MAKEUP, makeup.replace("2026-11-09", "2026-11-08"), true, 400)).at("/errors/plannedDate").isString());
+                assertTrue(JSON.readTree(otherSession.post(NAILS, nails.replace("2026-11-09", "2026-11-08"), true, 400)).at("/errors/plannedDate").isString());
                 assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM care_occurrences", Long.class));
 
                 long makeupId = JSON.readTree(session.post(MAKEUP, makeup, true, 201)).path("id").asLong();
@@ -1156,7 +1163,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_skin", hash, "America/Sao_Paulo");
-                long other = insertAccount(jdbc, "other_skin", hash, "UTC");
+                long other = insertAccount(jdbc, "other_skin", hash, "America/Sao_Paulo");
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var session = new Session(origin);
                 var otherSession = new Session(origin);
@@ -1167,7 +1174,7 @@ class AgendaPostgresqlTest {
                 session.login("owner_skin");
                 otherSession.login("other_skin");
                 assertEquals("2026-11-09", JSON.readTree(session.get("/api/agenda", 200)).path("today").asString());
-                assertEquals("2026-11-10", JSON.readTree(otherSession.get("/api/agenda", 200)).path("today").asString());
+                assertEquals("2026-11-09", JSON.readTree(otherSession.get("/api/agenda", 200)).path("today").asString());
                 session.post(SKIN, morning, false, 403);
 
                 var invalid = JSON.readTree(session.post(SKIN, """
@@ -1176,7 +1183,7 @@ class AgendaPostgresqlTest {
                 assertTrue(invalid.at("/errors/title").isString());
                 assertTrue(invalid.at("/errors/plannedDate").isString());
                 assertTrue(invalid.at("/errors/period").isString());
-                assertTrue(JSON.readTree(otherSession.post(SKIN, morning, true, 400)).at("/errors/plannedDate").isString());
+                assertTrue(JSON.readTree(otherSession.post(SKIN, morning.replace("2026-11-09", "2026-11-08"), true, 400)).at("/errors/plannedDate").isString());
                 assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM care_occurrences", Long.class));
 
                 session.post("/api/hair-plans", """
@@ -1234,7 +1241,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_routine", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "other_routine", hash, "UTC");
+                insertAccount(jdbc, "other_routine", hash, "America/Sao_Paulo");
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var session = new Session(origin);
                 var otherSession = new Session(origin);
@@ -1256,7 +1263,7 @@ class AgendaPostgresqlTest {
                 var invalidDays = session.post(SKIN_PLANS,
                         night.replace("[\"MONDAY\",\"THURSDAY\"]", "[]"), true, 400);
                 assertTrue(JSON.readTree(invalidDays).at("/errors/weekdays").isString());
-                var past = otherSession.post(SKIN_PLANS, morning.replace("2026-11-11", "2026-11-09"), true, 400);
+                var past = otherSession.post(SKIN_PLANS, morning.replace("2026-11-11", "2026-11-08"), true, 400);
                 assertTrue(JSON.readTree(past).at("/errors/startDate").isString());
                 assertEquals(0L, jdbc.queryForObject("SELECT COUNT(*) FROM recurring_plans", Long.class));
 
@@ -1329,7 +1336,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long ownerId = insertAccount(jdbc, "skin_owner", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "skin_other", hash, "UTC");
+                insertAccount(jdbc, "skin_other", hash, "America/Sao_Paulo");
                 var owner = new Session(origin(app));
                 var device = new Session(origin(app));
                 var other = new Session(origin(app));
@@ -1404,8 +1411,8 @@ class AgendaPostgresqlTest {
                 assertEquals(nightSteps, JSON.readTree(owner.get(HISTORY, 200)).at("/0/skinSteps"));
                 assertTrue(JSON.readTree(other.get(HISTORY, 200)).isEmpty());
 
-                // The same civil date is already past for the UTC account.
-                other.post(endpoint, format.formatted(requestId, night), true, 400);
+                // Every account rejects dates before the current day in São Paulo.
+                other.post(endpoint, format.formatted(requestId, night).replace("2026-11-09", "2026-11-08"), true, 400);
                 var single = format.formatted(requestId, night).replace("2026-11-09", "2026-11-10");
                 var otherIds = JSON.readTree(other.post(endpoint, single, true, 201)).path("planIds");
                 assertEquals(1, otherIds.size());
@@ -1433,7 +1440,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_agenda", hash, "America/Sao_Paulo");
-                long other = insertAccount(jdbc, "other_agenda", hash, "UTC");
+                long other = insertAccount(jdbc, "other_agenda", hash, "America/Sao_Paulo");
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var session = new Session(origin);
                 session.get(AGENDA, 401);
@@ -1478,7 +1485,7 @@ class AgendaPostgresqlTest {
                 var otherSession = new Session(origin);
                 otherSession.login("other_agenda");
                 var otherWeek = otherSession.week("");
-                assertEquals("2026-11-10", otherWeek.path("today").asString());
+                assertEquals("2026-11-09", otherWeek.path("today").asString());
                 assertEquals(JSON.readTree("[\"Cuidado de outra conta\"]"), titles(otherWeek.path("items")));
                 assertTrue(otherWeek.path("overdue").isEmpty());
                 assertEquals(0, otherWeek.path("completedCount").asInt());
@@ -1507,7 +1514,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_actions", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "other_actions", hash, "UTC");
+                insertAccount(jdbc, "other_actions", hash, "America/Sao_Paulo");
                 seedCare(jdbc, owner);
                 long overdue = careId(jdbc, "Lavagem em atraso");
                 long today = careId(jdbc, "Lavagem");
@@ -1618,7 +1625,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_reschedule", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "other_reschedule", hash, "UTC");
+                insertAccount(jdbc, "other_reschedule", hash, "America/Sao_Paulo");
                 seedCare(jdbc, owner);
                 long today = careId(jdbc, "Lavagem");
                 long upcoming = careId(jdbc, "Lavagem da próxima semana");
@@ -1735,9 +1742,9 @@ class AgendaPostgresqlTest {
                     .run("--server.address=127.0.0.1", "--server.port=0", "--spring.datasource.url=" + url)) {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
-                long owner = insertAccount(jdbc, "page_owner", hash, "UTC");
-                long other = insertAccount(jdbc, "page_other", hash, "UTC");
-                var today = java.time.LocalDate.now(app.getBean(Clock.class));
+                long owner = insertAccount(jdbc, "page_owner", hash, "America/Sao_Paulo");
+                long other = insertAccount(jdbc, "page_other", hash, "America/Sao_Paulo");
+                var today = java.time.LocalDate.now(app.getBean(Clock.class).withZone(ZoneId.of("America/Sao_Paulo")));
                 for (long account : new long[] {owner, other}) {
                     jdbc.update("""
                             INSERT INTO care_occurrences (account_id, category, title, status, completed_on)
@@ -1796,7 +1803,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_history", hash, "America/Sao_Paulo");
-                long other = insertAccount(jdbc, "other_history", hash, "UTC");
+                long other = insertAccount(jdbc, "other_history", hash, "America/Sao_Paulo");
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var session = new Session(origin);
                 session.get(HISTORY, 401);
@@ -1875,7 +1882,7 @@ class AgendaPostgresqlTest {
                 var jdbc = app.getBean(JdbcTemplate.class);
                 String hash = app.getBean(PasswordEncoder.class).encode(PASSWORD);
                 long owner = insertAccount(jdbc, "owner_closure", hash, "America/Sao_Paulo");
-                insertAccount(jdbc, "other_closure", hash, "UTC");
+                insertAccount(jdbc, "other_closure", hash, "America/Sao_Paulo");
                 seedCare(jdbc, owner);
                 long today = careId(jdbc, "Lavagem");
                 long nextWeek = careId(jdbc, "Lavagem da próxima semana");

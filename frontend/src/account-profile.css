@@ -1,0 +1,14 @@
+:host { display: block; }
+.profile-editor { display: grid; gap: var(--space-lg); }
+.profile-editor h2 { font-size: 1.125rem; }
+.profile-identity { display: flex; align-items: center; gap: var(--space-md); min-width: 0; }
+.profile-avatar { display: grid; place-items: center; flex: 0 0 6rem; width: 6rem; height: 6rem; overflow: hidden; border-radius: var(--round); background: var(--tint-light); color: var(--primary); }
+.profile-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.profile-avatar .material-symbol { font-size: 2.5rem; }
+.profile-photo-controls { min-width: 0; display: grid; gap: var(--space-xs); }
+.profile-photo-controls > p { overflow-wrap: anywhere; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); align-items: center; }
+form { margin: 0; }
+.field-error:empty { display: none; }
+.profile-notice { color: var(--completed-ink); }
+@media (max-width: 32rem) { .profile-identity { align-items: flex-start; flex-wrap: wrap; } }
