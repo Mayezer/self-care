@@ -78,7 +78,7 @@ test('rejects another host, missing client identity, insecure writes and incompl
   assert.equal((await worker.fetch(new Request(env.PUBLIC_SITE_ORIGIN, { headers: { 'CF-Connecting-IP': '192.0.2.10' } }), env)).status, 503);
 });
 
-test('keeps migration privileges, optional modules and registration out of the runtime', () => {
+test('keeps migration privileges and optional modules out of the runtime and closes registration by default', () => {
   const env = environment();
   const runtime = runtimeEnvironment(env);
   assert.equal(runtime.SPRING_DATASOURCE_USERNAME, 'autocuidado_runtime');
@@ -94,6 +94,18 @@ test('keeps migration privileges, optional modules and registration out of the r
     assert.throws(() => runtimeEnvironment({ ...env, AUTOCUIDADO_DB_RUNTIME_URL: env.AUTOCUIDADO_DB_RUNTIME_URL + suffix }));
   }
   assert.throws(() => runtimeEnvironment({ ...env, AUTOCUIDADO_EDGE_TOKEN: env.AUTOCUIDADO_MFA_KEY }));
+});
+
+test('opens registration only with an explicit setting in the selected environment', () => {
+  const env = environment();
+  for (const value of [undefined, '', 'false', 'TRUE', true, 1]) {
+    assert.equal(runtimeEnvironment({ ...env, AUTOCUIDADO_REGISTRATION_ENABLED: value }).APP_AUTH_REGISTRATION_ENABLED, 'false');
+  }
+  const runtime = runtimeEnvironment({ ...env, AUTOCUIDADO_REGISTRATION_ENABLED: 'true' });
+  assert.equal(runtime.APP_AUTH_REGISTRATION_ENABLED, 'true');
+  assert.equal(runtime.APP_FORUM_ENABLED, 'false');
+  assert.equal(runtime.APP_BILLING_ENABLED, 'false');
+  assert.equal(runtime.APP_AGENDA_WEB_PUSH_ENABLED, 'false');
 });
 
 async function containerFixture({ approved, bad = false } = {}) {

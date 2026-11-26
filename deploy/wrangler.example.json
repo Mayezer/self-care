@@ -7,6 +7,7 @@
   "routes": [],
   "vars": {
     "PUBLIC_SITE_ORIGIN": "https://agenda-autocuidado.mayezer.com",
+    "AUTOCUIDADO_REGISTRATION_ENABLED": "false",
     "AUTOCUIDADO_SMTP_FROM": ""
   },
   "observability": {
