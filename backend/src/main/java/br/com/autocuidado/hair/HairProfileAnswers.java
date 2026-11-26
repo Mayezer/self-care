@@ -1,6 +1,7 @@
 package br.com.autocuidado.hair;
 
 import java.time.YearMonth;
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -13,14 +14,14 @@ import tools.jackson.databind.node.ObjectNode;
 final class HairProfileAnswers {
 
     private static final Set<String> FIELDS = Set.of("curlPattern", "visualLength", "strandThickness", "rootOiliness",
-            "chemicalTreatments", "lastChemicalTreatmentMonth", "heatFrequency", "heatTools", "observations");
+            "chemicalTreatments", "lastChemicalTreatmentMonth", "heatFrequency", "heatTools", "observations", "careSchedule");
     private static final Set<String> EXCLUSIVE = Set.of("NONE", "UNKNOWN");
     private static final Map<String, String> CURL_GROUPS = Map.of("STRAIGHT", "1", "WAVY", "2", "CURLY", "3", "COILY", "4");
     private static final Pattern MONTH = Pattern.compile("[0-9]{4}-(0[1-9]|1[0-2])");
 
     private HairProfileAnswers() {}
 
-    static ObjectNode parse(JsonNode request, YearMonth currentMonth, Map<String, String> errors) {
+    static ObjectNode parse(JsonNode request, LocalDate today, Map<String, String> errors) {
         var answers = JsonNodeFactory.instance.objectNode();
         if (!FIELDS.containsAll(request.propertyNames())) {
             errors.put("body", "Envie apenas as respostas do perfil. A conta é identificada pela sessão.");
@@ -32,7 +33,7 @@ final class HairProfileAnswers {
         copyChoice(request, answers, errors, "rootOiliness", Set.of("RARELY", "SOMETIMES", "OFTEN", "UNKNOWN"));
         var treatments = copyChoices(request, answers, errors, "chemicalTreatments",
                 Set.of("DYE", "BLEACH", "HIGHLIGHTS", "STRAIGHTENING_OR_RELAXING", "OTHER", "NONE", "UNKNOWN"), EXCLUSIVE);
-        parseChemicalMonth(request.path("lastChemicalTreatmentMonth"), currentMonth, treatments, answers, errors);
+        parseChemicalMonth(request.path("lastChemicalTreatmentMonth"), YearMonth.from(today), treatments, answers, errors);
         copyChoice(request, answers, errors, "heatFrequency",
                 Set.of("NEVER", "LESS_THAN_WEEKLY", "ONE_TO_THREE_PER_WEEK", "FOUR_OR_MORE_PER_WEEK", "UNKNOWN"));
         copyChoices(request, answers, errors, "heatTools", Set.of("DRYER", "FLAT_IRON", "CURLING_IRON"), Set.of());
@@ -41,6 +42,7 @@ final class HairProfileAnswers {
         }
         copyChoices(request, answers, errors, "observations",
                 Set.of("DRYNESS", "BREAKAGE", "SPLIT_ENDS", "FRIZZ", "NONE", "UNKNOWN"), EXCLUSIVE);
+        HairCarePreferences.parse(request.path("careSchedule"), answers, today, errors);
         return answers;
     }
 

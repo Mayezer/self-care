@@ -77,7 +77,7 @@ interface SavedPlan {
                 @if (saved.routine; as routine) {
                   <details class="routine-details" [open]="first">
                     <summary>Rotina deste dia</summary>
-                    <app-hair-routine [routine]="routine" />
+                    <app-hair-routine [routine]="routine" [date]="session.date" [stage]="session.stage" [occurrenceId]="session.id" />
                   </details>
                 }
               </li>

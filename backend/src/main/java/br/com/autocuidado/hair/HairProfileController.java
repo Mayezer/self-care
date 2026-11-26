@@ -1,7 +1,7 @@
 package br.com.autocuidado.hair;
 
 import java.time.Clock;
-import java.time.YearMonth;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -47,7 +47,7 @@ class HairProfileController {
         }
         var errors = new LinkedHashMap<String, String>();
         var answers = HairProfileAnswers.parse(request,
-                YearMonth.now(clock.withZone(timeZones.current(account.accountId()))), errors);
+                LocalDate.now(clock.withZone(timeZones.current(account.accountId()))), errors);
         if (!errors.isEmpty()) {
             return ResponseEntity.badRequest().body(new FieldErrors(errors));
         }

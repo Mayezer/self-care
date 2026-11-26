@@ -199,7 +199,7 @@ class HairProductRecommendationsTest {
     private JsonNode scenario(String id) throws IOException {
         var input = HairProductPreview.scenarios(mapper).get(id).answers();
         var errors = new LinkedHashMap<String, String>();
-        var answers = HairProfileAnswers.parse(input, YearMonth.from(REVIEW_DATE), errors);
+        var answers = HairProfileAnswers.parse(input, REVIEW_DATE, errors);
         assertTrue(errors.isEmpty(), errors.toString());
         return answers;
     }

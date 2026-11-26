@@ -7,6 +7,7 @@ import { RouterLink } from '@angular/router';
 import { putWithCsrf } from './csrf';
 import { CURL_GROUPS, CurlGroup, CurlSubtype } from './curl-patterns';
 import { Guide, GUIDES } from './help-guides';
+import { HairCarePreferences, type HairCarePreferencesData } from './hair-care-preferences';
 
 const PROFILE_URL = '/api/hair-profile';
 type PatternChoice = CurlGroup | 'MULTIPLE' | 'UNKNOWN' | '';
@@ -66,7 +67,7 @@ const MULTI_FIELDS = [
 type TextureField = typeof TEXTURE_FIELDS[number]['field'];
 type MultiField = typeof MULTI_FIELDS[number]['field'];
 type SingleField = TextureField | 'heatFrequency' | 'lastChemicalTreatmentMonth';
-type Answers = Partial<Record<SingleField, string> & Record<MultiField, string[]> & { curlPattern: CurlPattern }>;
+type Answers = Partial<Record<SingleField, string> & Record<MultiField, string[]> & { curlPattern: CurlPattern; careSchedule: HairCarePreferencesData }>;
 type FieldErrors = Partial<Record<keyof Answers | 'body', string>>;
 
 function isExclusive(value: string): boolean {
@@ -75,7 +76,7 @@ function isExclusive(value: string): boolean {
 
 @Component({
   selector: 'app-hair-profile',
-  imports: [RouterLink],
+  imports: [RouterLink, HairCarePreferences],
   templateUrl: './hair-profile.html',
   styleUrl: './hair-profile.css',
 })
@@ -187,6 +188,8 @@ export class HairProfile {
     if (field === 'heatFrequency' && value === 'NEVER') this.setAnswer('heatTools', undefined);
   }
 
+  protected changeCareSchedule(value: HairCarePreferencesData): void { this.setAnswer('careSchedule', value); }
+
   protected toggleOption(field: MultiField, value: string, checked: boolean): void {
     const current = this.answers()[field] ?? [];
     const values = !checked ? current.filter(option => option !== value) : isExclusive(value)
@@ -209,6 +212,13 @@ export class HairProfile {
 
   protected save(clear = false): void {
     if (this.saving() || this.state() !== 'ready' || (!clear && this.confirmingClear())) return;
+    const invalidCare = [...this.host.nativeElement.querySelectorAll<HTMLInputElement>('[data-care-input]')]
+      .find(field => field.validity.badInput);
+    if (!clear && invalidCare) {
+      this.errors.set({ careSchedule: 'Confira a data ou o intervalo digitado. Suas respostas continuam no formulário.' });
+      this.focus('#' + invalidCare.id);
+      return;
+    }
     if (!clear && this.host.nativeElement.querySelector<HTMLInputElement>('#lastChemicalTreatmentMonth')?.validity.badInput) {
       this.errors.set({ lastChemicalTreatmentMonth: 'Preencha o mês e o ano ou deixe o campo em branco.' });
       this.focus('#lastChemicalTreatmentMonth');

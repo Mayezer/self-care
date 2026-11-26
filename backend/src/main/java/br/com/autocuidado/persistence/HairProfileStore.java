@@ -2,6 +2,7 @@ package br.com.autocuidado.persistence;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -22,7 +23,9 @@ public class HairProfileStore {
                 .stream().findFirst().orElseGet(json::createObjectNode);
     }
 
+    @Transactional
     public void replace(long accountId, JsonNode answers) {
+        jdbc.queryForObject("SELECT id FROM accounts WHERE id = ? FOR UPDATE", Long.class, accountId);
         if (answers.isEmpty()) {
             jdbc.update("DELETE FROM hair_profiles WHERE account_id = ?", accountId);
             return;

@@ -4,6 +4,12 @@ import br.com.autocuidado.auth.LoginRateLimit;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.LocalDate;
+import java.time.DayOfWeek;
+import java.util.List;
+import br.com.autocuidado.hair.HairCareRoutine;
+import br.com.autocuidado.hair.HairStage;
+import tools.jackson.databind.json.JsonMapper;
 
 import br.com.autocuidado.auth.AccountTimeZones;
 import br.com.autocuidado.auth.SecurityConfiguration;
@@ -32,6 +38,10 @@ import org.springframework.test.web.servlet.ResultActions;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -63,6 +73,11 @@ class HairPreviewControllerTest {
     @BeforeEach
     void allowPreviewBudget() {
         when(loginRateLimit.tryAcquire(anyString(), anyInt(), anyInt())).thenReturn(true);
+        var general = new HairPlanService.SuggestedPreview(
+                List.of("2026-11-12", "2026-11-16", "2026-11-19", "2026-11-23").stream()
+                        .map(date -> new HairPlanService.Occurrence(LocalDate.parse(date), HairStage.WASH_ONLY)).toList(),
+                HairCareRoutine.from(JsonMapper.builder().build().createObjectNode()), List.of(DayOfWeek.MONDAY, DayOfWeek.THURSDAY));
+        when(plans.preview(isNull(), any(), anyInt(), anySet(), any())).thenReturn(general);
     }
 
     @Test
@@ -101,7 +116,8 @@ class HairPreviewControllerTest {
                 .andExpect(jsonPath("$.occurrences[1].date").value("2026-11-16"))
                 .andExpect(jsonPath("$.occurrences[1].stage").value("WASH_ONLY"))
                 .andExpect(jsonPath("$.occurrences[3].stage").value("WASH_ONLY"));
-        verifyNoInteractions(profiles, plans);
+        verifyNoInteractions(profiles);
+        verify(plans).preview(isNull(), any(), anyInt(), anySet(), any());
     }
 
     @Test
@@ -111,7 +127,8 @@ class HairPreviewControllerTest {
                 .andExpect(jsonPath("$.suggestion.personalized").value(false))
                 .andExpect(jsonPath("$.suggestion.steps[0].id").value("cleanse"))
                 .andExpect(jsonPath("$.occurrences[0].stage").value("WASH_ONLY"));
-        verifyNoInteractions(profiles, plans);
+        verifyNoInteractions(profiles);
+        verify(plans).preview(isNull(), any(), anyInt(), anySet(), any());
     }
 
     @ParameterizedTest

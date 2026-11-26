@@ -112,8 +112,8 @@ export const GUIDES = {
     title: 'Etapas do cronograma',
     summary: 'Veja como escolher os dias e o que significam as etapas opcionais.',
     paragraphs: [
-      'Na prévia, escolha de 1 a 7 dias diferentes da semana. Na montagem manual, cada sessão começa em Lavagem e condicionamento. Em Receber sugestão, os cuidados de cada lavagem são adaptados às respostas salvas em Meu cabelo. Confira a rotina em cada data e ajuste os cuidados extras como preferir.',
-      'Hidratação, nutrição e reconstrução são opções para organizar cuidados escolhidos por você. O perfil sozinho não define intervalos seguros para esses tratamentos. A sugestão do app adapta o condicionamento, o manuseio e as orientações de cuidado, sem escolher produtos.',
+      'Na prévia, escolha a duração e de 1 a 7 dias da semana. Em Receber sugestão, você pode pedir dias distribuídos pela frequência confortável informada em Meu cabelo. Confira o cuidado e o motivo em cada data; datas e etapas continuam editáveis.',
+      'Complete em Meu cabelo o uso recente e a tolerância aos cuidados. A hidratação semanal é uma opção educativa para ressecamento, quando o histórico permite. Nutrição e reconstrução são encaixadas com os intervalos que você já conhece ou recebeu de um profissional; o app não determina esses intervalos pela curvatura nem escolhe produtos. Dados ausentes, reação ou sinais de alerta são explicados na prévia.',
       'Antes de usar um produto, confira a região de aplicação, o tempo de pausa e a orientação sobre enxágue no rótulo. Escolha os dias e as etapas que cabem na sua rotina.',
     ],
     sources: [

@@ -22,9 +22,12 @@ export type Weekday = (typeof WEEKDAYS)[number]['value'];
 export type Stage = (typeof STAGES)[number]['value'];
 export interface HairSuggestionOptions {
   useProfile: boolean;
+  autoWeekdays?: boolean;
+  sourceRevision?: string;
 }
 
 export interface PreviewOccurrence {
+  id?: number;
   date: string;
   stage: Stage;
 }

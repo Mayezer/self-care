@@ -17,6 +17,7 @@ type FieldErrors = Partial<Record<PreviewField | 'timeZone' | 'body' | 'occurren
 interface PreviewResponse {
   occurrences: PreviewOccurrence[];
   suggestion?: HairRoutineData;
+  weekdays?: Weekday[];
 }
 
 interface Occurrence extends PreviewOccurrence {
@@ -32,9 +33,9 @@ function shortSessionDate(date: string): string {
 
 const STAGE_CUES: Record<Stage, { icon: string; hint: string }> = {
   WASH_ONLY: { icon: 'spa', hint: 'Cuidado básico de lavagem e condicionamento.' },
-  HYDRATION: { icon: 'water_drop', hint: 'Hidratação adicionada por você nesta sessão.' },
-  NUTRITION: { icon: 'opacity', hint: 'Nutrição adicionada por você nesta sessão.' },
-  RECONSTRUCTION: { icon: 'auto_awesome', hint: 'Reconstrução adicionada por você nesta sessão.' },
+  HYDRATION: { icon: 'water_drop', hint: 'Hidratação nesta sessão de lavagem.' },
+  NUTRITION: { icon: 'opacity', hint: 'Nutrição nesta sessão de lavagem.' },
+  RECONSTRUCTION: { icon: 'auto_awesome', hint: 'Reconstrução nesta sessão de lavagem.' },
 };
 
 function labelOccurrences(occurrences: readonly PreviewOccurrence[]): Occurrence[] {
@@ -69,6 +70,7 @@ export class App {
   }) : undefined;
   private previewSuggestion = this.draft?.suggestion;
   private datesOutdated = this.draft !== undefined;
+  private sourceOutdated = false;
   private editedStages = new Map(this.draft?.occurrences
     .filter(({ date }) => this.draft?.editedDates?.includes(date) ?? true)
     .map(({ date, stage }) => [date, stage]));
@@ -86,6 +88,7 @@ export class App {
   protected readonly selectedDays = signal<readonly Weekday[]>(this.draft?.weekdays ?? []);
   protected readonly suggested = signal(this.previewSuggestion !== undefined);
   protected readonly useProfile = signal(this.previewSuggestion?.useProfile ?? true);
+  protected readonly autoWeekdays = signal(this.previewSuggestion?.autoWeekdays ?? false);
   protected readonly routine = signal<HairRoutineData | null>(this.draft?.routine ?? null);
   protected readonly occurrences = signal(labelOccurrences(this.draft?.occurrences ?? []));
   protected readonly errors = signal<FieldErrors>({});
@@ -125,6 +128,7 @@ export class App {
   }
 
   protected toggleDay(day: Weekday): void {
+    this.autoWeekdays.set(false);
     this.selectedDays.update(days => days.includes(day)
       ? days.filter(selected => selected !== day)
       : [...days, day]);
@@ -141,12 +145,25 @@ export class App {
 
   protected changeMode(suggested: boolean): void {
     this.suggested.set(suggested);
+    if (suggested && !this.selectedDays().length) this.autoWeekdays.set(true);
     this.invalidatePreview('suggestion');
   }
 
   protected changeUseProfile(useProfile: boolean): void {
     this.useProfile.set(useProfile);
+    if (!useProfile) this.autoWeekdays.set(false);
     this.invalidatePreview('suggestion');
+  }
+
+  protected changeAutoWeekdays(value: boolean): void {
+    this.autoWeekdays.set(value);
+    this.invalidatePreview('weekdays');
+  }
+
+  protected stageHint(occurrence: Occurrence): string {
+    if (this.editedStages.has(occurrence.date)) return 'Cuidado escolhido por você. Confira o intervalo antes de aplicar.';
+    return this.routine()?.schedule?.sessions.find(item => item.date === occurrence.date)?.reason
+      ?? this.stageCues[occurrence.stage].hint;
   }
 
   protected savePlan(): void {
@@ -188,7 +205,11 @@ export class App {
           }
           const fields: FieldErrors | undefined = error.status === 400 || error.status === 409 ? error.error?.errors : undefined;
           this.errors.set(fields ?? {});
-          if (fields?.startDate || fields?.weeks || fields?.weekdays || fields?.occurrences) {
+          if (fields?.suggestion) {
+            this.sourceOutdated = true;
+            this.outdated.set(true);
+            this.requestError.set(fields.suggestion);
+          } else if (fields?.startDate || fields?.weeks || fields?.weekdays || fields?.occurrences) {
             this.datesOutdated = true;
             this.outdated.set(true);
             this.requestError.set(fields.occurrences ??
@@ -219,7 +240,7 @@ export class App {
     if (this.loading() || this.saving()) return;
 
     const suggestion = this.suggestionOptions();
-    if (this.editedStages.size && suggestion && (this.suggestionChanged(suggestion) || !this.datesOutdated)) {
+    if (this.editedStages.size && suggestion && (suggestion.useProfile !== this.previewSuggestion?.useProfile || !this.datesOutdated)) {
       dialog.showModal();
       return;
     }
@@ -227,19 +248,21 @@ export class App {
   }
 
   private suggestionOptions(): HairSuggestionOptions | undefined {
-    return this.suggested() ? { useProfile: this.useProfile() } : undefined;
+    return this.suggested() ? { useProfile: this.useProfile(), autoWeekdays: this.autoWeekdays() } : undefined;
   }
 
   private suggestionChanged(suggestion: HairSuggestionOptions | undefined): boolean {
-    return suggestion?.useProfile !== this.previewSuggestion?.useProfile;
+    return suggestion?.useProfile !== this.previewSuggestion?.useProfile
+      || suggestion?.autoWeekdays !== this.previewSuggestion?.autoWeekdays;
   }
 
   protected keepEdits(): void {
     this.suggested.set(this.previewSuggestion !== undefined);
     if (this.previewSuggestion) {
       this.useProfile.set(this.previewSuggestion.useProfile);
+      this.autoWeekdays.set(this.previewSuggestion.autoWeekdays ?? false);
     }
-    this.outdated.set(this.datesOutdated);
+    this.outdated.set(this.datesOutdated || this.sourceOutdated);
   }
 
   protected requestPreview(replaceEdits: boolean, resume?: HairPreviewState): void {
@@ -261,18 +284,23 @@ export class App {
       timeZone: this.timeZone,
       ...(options ? { suggestion: options } : {}),
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ({ occurrences, suggestion }) => {
+      next: ({ occurrences, suggestion, weekdays }) => {
         const dates = new Set(occurrences.map(item => item.date));
         if (replaceEdits) this.editedStages.clear();
         this.editedStages = new Map([...this.editedStages].filter(([date]) => dates.has(date)));
-        const stages = resume ? new Map(resume.occurrences.map(({ date, stage }) => [date, stage])) : this.editedStages;
+        const stages = resume ? new Map(resume.occurrences
+          .filter(({ date }) => resume.editedDates?.includes(date) ?? true)
+          .map(({ date, stage }) => [date, stage])) : this.editedStages;
         this.occurrences.set(labelOccurrences(occurrences.map(({ date, stage }) => ({
           date, stage: stages.get(date) ?? stage,
         }))));
         this.routine.set(suggestion ?? resume?.routine ?? null);
-        this.previewSuggestion = options;
+        this.previewSuggestion = options ? { ...options, ...(suggestion?.schedule?.sourceRevision
+          ? { sourceRevision: suggestion.schedule.sourceRevision } : {}) } : undefined;
+        if (options?.autoWeekdays && weekdays) this.selectedDays.set(weekdays);
         this.previewStart.set(startDate);
         this.datesOutdated = false;
+        this.sourceOutdated = false;
         this.outdated.set(false);
         this.loading.set(false);
       },

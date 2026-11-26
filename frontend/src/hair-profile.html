@@ -204,6 +204,10 @@
     </fieldset>
 
     <div class="card profile-section">
+      <app-hair-care-preferences [value]="answers().careSchedule" [today]="today()" [disabled]="saving()"
+        [error]="errors().careSchedule" (changed)="changeCareSchedule($event)" />
+    </div>
+    <div class="card profile-section">
       @if (confirmingClear()) {
         <p>Limpar as respostas salvas do perfil? Esta ação mantém seu cronograma e seu histórico.</p>
         <div class="profile-actions">

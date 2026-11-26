@@ -54,6 +54,44 @@ function request() {
   return request;
 }
 
+it('displays the saved comfortable frequency on the first render', () => {
+  const form = render({ careSchedule: { washesPerWeek: 3, scalpSymptoms: 'NO' } });
+  expect(form.page.querySelector<HTMLSelectElement>('#care-washes')!.value).toBe('3');
+});
+
+it('saves comfortable frequency and explicit care history without treating unknown or a reaction as permission', () => {
+  const form = render();
+  expect(form.page.querySelector<HTMLSelectElement>('#care-symptoms')!.value).toBe('UNKNOWN');
+  form.set('#care-washes', '3');
+  form.set('#care-symptoms', 'NO');
+  form.set('#care-status-HYDRATION', 'KNOWN');
+  form.set('#care-last-HYDRATION', '2026-11-05');
+  form.set('#care-status-RECONSTRUCTION', 'FIRST_USE');
+  form.set('#care-unit-RECONSTRUCTION', 'MONTHS');
+  form.set('#care-every-RECONSTRUCTION', '2');
+  form.set('#care-status-NUTRITION', 'AVOID');
+  form.click('Salvar respostas');
+  const write = request();
+  expect(JSON.parse(write.request.serializeBody() as string).careSchedule).toEqual({
+    washesPerWeek: 3, scalpSymptoms: 'NO', treatments: {
+      HYDRATION: { status: 'KNOWN', lastUse: '2026-11-05' },
+      RECONSTRUCTION: { status: 'FIRST_USE', unit: 'MONTHS', every: 2 }, NUTRITION: { status: 'AVOID' },
+    },
+  });
+  write.flush(write.request.body);
+  form.update();
+  expect(form.page.querySelector<HTMLSelectElement>('#care-unit-RECONSTRUCTION')!.value).toBe('MONTHS');
+});
+
+it('does not silently replace an invalid numeric interval with the general hydration default', () => {
+  const form = render({ careSchedule: { scalpSymptoms: 'NO', treatments: { HYDRATION: { status: 'FIRST_USE' } } } });
+  const every = form.page.querySelector<HTMLInputElement>('#care-every-HYDRATION')!;
+  Object.defineProperty(every, 'validity', { value: { badInput: true } });
+  form.click('Salvar respostas');
+  http.expectNone('/api/auth/csrf');
+  expect(form.page.textContent).toContain('Confira a data ou o intervalo digitado');
+});
+
 it('saves up to two distinct patterns with subtypes scoped to each group', () => {
   const form = render();
   expect(form.page.querySelector('.profile-state a[href="/agenda"]')?.textContent).toBe('Pular e ir à agenda');

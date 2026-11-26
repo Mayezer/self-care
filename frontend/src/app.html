@@ -26,9 +26,15 @@
                        aria-describedby="planner-profile-hint" (change)="changeUseProfile(useProfileInput.checked)">
                 Usar as respostas salvas em Meu cabelo
               </label>
-              <p class="hint" id="planner-profile-hint">Vamos adaptar os cuidados de cada lavagem ao seu perfil, sem escolher produtos.
+              <p class="hint" id="planner-profile-hint">Vamos usar sua rotina confortável de lavagem, os cuidados conhecidos e o histórico para montar as datas.
                 <a class="agenda-add" href="/meu-cabelo" target="_blank" rel="noopener">Revisar Meu cabelo</a>
               </p>
+              <label class="planner-profile-choice">
+                <input #autoDays type="checkbox" [checked]="autoWeekdays()" [disabled]="saving() || !useProfile()"
+                  (change)="changeAutoWeekdays(autoDays.checked)">
+                Sugerir também os dias da semana
+              </label>
+              <p class="hint">Os dias são distribuídos pela frequência que você informou em Meu cabelo. Você pode ajustar qualquer dia abaixo.</p>
             </div>
           }
 
@@ -153,7 +159,7 @@
               @if (!outdated() && routine(); as care) {
                 <details class="routine-details" [open]="first">
                   <summary>Rotina deste dia <span class="pill">{{ care.steps.length }} passos</span></summary>
-                  <app-hair-routine [routine]="care" />
+                  <app-hair-routine [routine]="care" [date]="occurrence.date" [stage]="occurrence.stage" />
                 </details>
               }
               <div class="field">
@@ -166,7 +172,7 @@
                   }
                 </select>
               </div>
-              <p class="hint stage-cue"><span class="material-symbol" aria-hidden="true">check_circle</span>{{ stageCues[occurrence.stage].hint }}</p>
+              <p class="hint stage-cue"><span class="material-symbol" aria-hidden="true">check_circle</span>{{ stageHint(occurrence) }}</p>
             </li>
           }
         </ol>

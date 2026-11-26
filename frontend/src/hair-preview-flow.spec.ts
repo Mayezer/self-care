@@ -1,13 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { expect, it, vi } from 'vitest';
 import { Agenda } from './agenda';
 import { App } from './app';
 import { SavedHairPlan } from './saved-hair-plan';
-import type { HairRoutineData } from './hair-routine';
+import { HairRoutine, type HairRoutineData } from './hair-routine';
 
 const care: HairRoutineData = {
   modelId: 'daily-hair-care', version: 2, reviewedOn: '2026-11-23', personalized: false,
@@ -18,6 +18,91 @@ const care: HairRoutineData = {
     { id: 'detangle', title: 'Desembaraçar sem tração', instruction: 'Comece pelas pontas.' },
   ],
 };
+
+it('keeps the original explanation attached to a moved occurrence and distinguishes a manually changed stage', () => {
+  const fixture = TestBed.createComponent(HairRoutine);
+  fixture.componentRef.setInput('routine', { ...care, version: 3, schedule: { sourceRevision: 'a'.repeat(64), notes: [],
+    sessions: [{ occurrenceId: 42, date: '2026-11-26', stage: 'HYDRATION', reason: 'Motivo da hidratação original.' }],
+  } });
+  fixture.componentRef.setInput('occurrenceId', 42);
+  fixture.componentRef.setInput('date', '2026-12-01');
+  fixture.componentRef.setInput('stage', 'HYDRATION');
+  fixture.detectChanges();
+  const page: HTMLElement = fixture.nativeElement;
+  expect(page.textContent).toContain('Motivo da hidratação original');
+  expect(page.textContent).toContain('Esta sessão foi reagendada');
+  fixture.componentRef.setInput('stage', 'RECONSTRUCTION');
+  fixture.detectChanges();
+  expect(page.textContent).toContain('Etapa alterada por você');
+  expect(page.textContent).not.toContain('Motivo da hidratação original');
+});
+
+it('adopts authenticated suggestions after returning to an unedited draft and invalidates a stale source before saving', async () => {
+  TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(),
+    provideRouter([{ path: '', component: App }, { path: 'retomar', component: App }])],
+  });
+  const harness = await RouterTestingHarness.create('/');
+  const http = TestBed.inject(HttpTestingController);
+  http.expectOne('/api/health').flush({ status: 'UP' });
+  const date = '2026-11-26';
+  await TestBed.inject(Router).navigateByUrl('/retomar', { state: { hairPreviewDraft: {
+    startDate: date, weeks: 1, weekdays: ['THURSDAY'], occurrences: [{ date, stage: 'WASH_ONLY' }],
+    suggestion: { useProfile: true, autoWeekdays: false }, editedDates: [],
+  } } });
+  http.expectOne('/api/health').flush({ status: 'UP' });
+  const revision = 'a'.repeat(64);
+  const routine: HairRoutineData = { ...care, version: 3, schedule: { sourceRevision: revision, notes: [],
+    sessions: [{ date, stage: 'HYDRATION', reason: 'Ressecamento e intervalo atendidos.' }],
+  } };
+  http.expectOne('/api/hair-plans/preview').flush({ occurrences: [{ date, stage: 'HYDRATION' }], suggestion: routine, weekdays: ['THURSDAY'] });
+  harness.detectChanges();
+  const page = harness.routeNativeElement!;
+  expect(page.querySelector<HTMLSelectElement>('#stage-' + date)!.value).toBe('HYDRATION');
+  expect(page.textContent).toContain('Ressecamento e intervalo atendidos.');
+  page.querySelector<HTMLButtonElement>('.preview-action')!.click();
+  http.expectOne('/api/auth/csrf').flush({ headerName: 'X-CSRF-TOKEN', token: 'test-only' });
+  const save = http.expectOne('/api/hair-plans');
+  expect(save.request.body.suggestion.sourceRevision).toBe(revision);
+  save.flush({ errors: { suggestion: 'Seu perfil ou sua agenda mudou. Gere a prévia novamente.' } }, { status: 409, statusText: 'Conflict' });
+  harness.detectChanges();
+  expect(page.querySelector('.preview-action')).toBeNull();
+  expect(page.querySelector('[role="alert"]')?.textContent).toContain('Gere a prévia novamente');
+  http.verify();
+});
+
+it('uses the server suggested weekdays and lets a day edit return to manual dates', async () => {
+  TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([{ path: '', component: App }])] });
+  const harness = await RouterTestingHarness.create('/');
+  const http = TestBed.inject(HttpTestingController);
+  http.expectOne('/api/health').flush({ status: 'UP' });
+  const page = harness.routeNativeElement!;
+  const start = page.querySelector<HTMLInputElement>('#start-date')!;
+  start.value = '2026-11-26'; start.dispatchEvent(new Event('input'));
+  page.querySelectorAll<HTMLInputElement>('[name="planner-mode"]')[1].click();
+  harness.detectChanges();
+  page.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+  const request = http.expectOne('/api/hair-plans/preview');
+  expect(request.request.body.suggestion.autoWeekdays).toBe(true);
+  expect(request.request.body.weekdays).toEqual([]);
+  request.flush({ weekdays: ['MONDAY', 'THURSDAY', 'SATURDAY'], suggestion: { ...care, version: 3, schedule: {
+    sourceRevision: 'a'.repeat(64), notes: [], sessions: [],
+  } }, occurrences: [{ date: '2026-11-26', stage: 'HYDRATION' },
+    { date: '2026-11-28', stage: 'WASH_ONLY' }, { date: '2026-11-30', stage: 'WASH_ONLY' }] });
+  harness.detectChanges();
+  const edited = page.querySelector<HTMLSelectElement>('#stage-2026-11-28')!;
+  edited.value = 'NUTRITION'; edited.dispatchEvent(new Event('change'));
+  const thursday = page.querySelector<HTMLButtonElement>('[aria-label="Qui, Quinta-feira"]')!;
+  expect(thursday.getAttribute('aria-pressed')).toBe('true');
+  thursday.click(); harness.detectChanges();
+  page.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+  const manual = http.expectOne('/api/hair-plans/preview');
+  expect(manual.request.body.suggestion.autoWeekdays).toBe(false);
+  expect(manual.request.body.weekdays).toEqual(['MONDAY', 'SATURDAY']);
+  manual.flush({ occurrences: [{ date: '2026-11-28', stage: 'WASH_ONLY' }], suggestion: care });
+  harness.detectChanges();
+  expect(page.querySelector<HTMLSelectElement>('#stage-2026-11-28')!.value).toBe('NUTRITION');
+  http.verify();
+});
 
 it('resumes the draft, corrects the date and safely retries saving the chosen stages', async () => {
   TestBed.configureTestingModule({
@@ -66,7 +151,7 @@ it('resumes the draft, corrects the date and safely retries saving the chosen st
   getPage().querySelector<HTMLButtonElement>('.preview-action')!.click();
   http.expectOne('/api/auth/csrf').flush({ headerName: 'X-CSRF-TOKEN', token: 'visitor' });
   const beforeLogin = http.expectOne('/api/hair-plans');
-  expect(beforeLogin.request.body.suggestion).toEqual({ useProfile: true });
+  expect(beforeLogin.request.body.suggestion).toEqual({ useProfile: true, autoWeekdays: false });
   beforeLogin.flush(null, { status: 401, statusText: 'Unauthorized' });
   await harness.fixture.whenStable();
   http.expectOne('/api/agenda').flush(null, { status: 401, statusText: 'Unauthorized' });
@@ -92,7 +177,7 @@ it('resumes the draft, corrects the date and safely retries saving the chosen st
   expect(resumed.request.body).toMatchObject({
     startDate: '2026-11-09', weeks: 1, weekdays: ['MONDAY', 'THURSDAY'],
   });
-  expect(resumed.request.body.suggestion).toEqual({ useProfile: true });
+  expect(resumed.request.body.suggestion).toEqual({ useProfile: true, autoWeekdays: false });
   resumed.flush(
     { errors: { startDate: 'Escolha a data de hoje ou uma data futura.' } },
     { status: 400, statusText: 'Bad Request' },
@@ -112,7 +197,7 @@ it('resumes the draft, corrects the date and safely retries saving the chosen st
   submit();
   const corrected = http.expectOne(previewUrl);
   expect(corrected.request.body.startDate).toBe('2026-11-10');
-  expect(corrected.request.body.suggestion).toEqual({ useProfile: true });
+  expect(corrected.request.body.suggestion).toEqual({ useProfile: true, autoWeekdays: false });
   corrected.flush(response('2026-11-12', '2026-11-16'));
   harness.detectChanges();
   expect(getPage().querySelector('#stage-2026-11-09')).toBeNull();
@@ -259,7 +344,7 @@ it('uses the same dates for either mode and keeps a stage explicitly edited by t
   page.querySelector<HTMLInputElement>('input[aria-describedby="planner-profile-hint"]')!.click();
   submit();
   const suggested = http.expectOne(preview);
-  expect(suggested.request.body).toEqual({ ...manual.request.body, suggestion: { useProfile: false } });
+  expect(suggested.request.body).toEqual({ ...manual.request.body, suggestion: { useProfile: false, autoWeekdays: false } });
   suggested.flush({
     occurrences: [{ date, stage: 'WASH_ONLY' }],
     suggestion: care,

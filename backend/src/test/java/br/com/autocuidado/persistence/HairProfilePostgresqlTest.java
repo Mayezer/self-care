@@ -17,6 +17,7 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import br.com.autocuidado.SelfCareApplication;
 import org.junit.jupiter.api.Tag;
@@ -46,6 +47,134 @@ class HairProfilePostgresqlTest {
     private static final String HISTORY = "/api/history";
     private static final String PASSWORD = "Local-test-321";
     private static final JsonMapper JSON = JsonMapper.builder().build();
+
+    @Test
+    void schedulesKnownCareWithScopedHistorySnapshotsAndConcurrentRetries() throws Exception {
+        String database=System.getenv("SPRING_DATASOURCE_URL");assertNotNull(database);
+        String schema="hair_schedule_"+UUID.randomUUID().toString().replace("-", "");
+        String url=database+(database.contains("?")?"&":"?")+"currentSchema="+schema;
+        String preferences="""
+                {"observations":["DRYNESS"],"careSchedule":{"washesPerWeek":3,"scalpSymptoms":"NO","treatments":{
+                "HYDRATION":{"status":"FIRST_USE"},"NUTRITION":{"status":"FIRST_USE","every":2,"unit":"WEEKS"},
+                "RECONSTRUCTION":{"status":"FIRST_USE","every":1,"unit":"MONTHS"}}}}
+                """;
+        try(var provisioner=DriverManager.getConnection(database,System.getenv("SPRING_DATASOURCE_USERNAME"),System.getenv("SPRING_DATASOURCE_PASSWORD"));
+            var ddl=provisioner.createStatement()) {
+            ddl.execute("CREATE SCHEMA "+schema);
+            try {
+                long savedId;JsonNode saved;
+                try(var app=startSchedule(url)) {
+                    var jdbc=app.getBean(JdbcTemplate.class);String hash=app.getBean(PasswordEncoder.class).encode(PASSWORD);
+                    for(String name:new String[]{"schedule_one","schedule_other"}) jdbc.update(
+                            "INSERT INTO accounts(username,password_hash) VALUES(?,?)",name,hash);
+                    long owner=jdbc.queryForObject("SELECT id FROM accounts WHERE username='schedule_one'",Long.class);
+                    var session=new Session(origin(app));session.login("schedule_one");
+                    var other=new Session(origin(app));other.login("schedule_other");
+                    session.post("/api/hair-plans/preview",schedulePreviewBody(),400);
+                    session.put(PROFILE,preferences,true,200);
+                    var preview=session.post("/api/hair-plans/preview",schedulePreviewBody(),200);
+                    assertEquals(36,preview.path("occurrences").size());
+                    assertEquals(JSON.readTree("[\"MONDAY\",\"THURSDAY\",\"SATURDAY\"]"),preview.path("weekdays"));
+                    for(String stage:new String[]{"HYDRATION","NUTRITION","RECONSTRUCTION"}) assertTrue(
+                            java.util.stream.StreamSupport.stream(preview.path("occurrences").spliterator(),false)
+                                .anyMatch(item->stage.equals(item.path("stage").asString())),stage);
+                    String body=scheduleBody(preview,UUID.randomUUID());
+                    var request=session.withCsrf(session.request("/api/hair-plans")).header("Content-Type","application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+                    var first=session.client.sendAsync(request,HttpResponse.BodyHandlers.ofString());
+                    var retry=session.client.sendAsync(request,HttpResponse.BodyHandlers.ofString());
+                    var firstResponse=first.get(15,TimeUnit.SECONDS);var retryResponse=retry.get(15,TimeUnit.SECONDS);
+                    assertEquals(201,firstResponse.statusCode());assertEquals(firstResponse.body(),retryResponse.body());
+                    savedId=JSON.readTree(firstResponse.body()).path("planId").asLong();
+                    saved=session.get("/api/hair-plans/"+savedId,200);
+                    assertEquals(3,saved.at("/routine/version").asInt());
+                    assertEquals(preview.at("/suggestion/summary"),saved.at("/routine/summary"));
+                    assertEquals(saved.at("/occurrences/0/id"),saved.at("/routine/schedule/sessions/0/occurrenceId"));
+                    other.get("/api/hair-plans/"+savedId,404);
+                    var source=session.post("/api/hair-plans/preview",schedulePreviewBody(),200);
+                    assertFalse(source.at("/suggestion/schedule/sourceRevision").asString().equals(preview.at("/suggestion/schedule/sourceRevision").asString()));
+                    session.put(PROFILE,preferences.replace("\"washesPerWeek\":3","\"washesPerWeek\":2"),true,200);
+                    assertTrue(session.post("/api/hair-plans",scheduleBody(source,UUID.randomUUID()),409).at("/errors/suggestion").isString());
+                    assertEquals(savedId,session.post("/api/hair-plans",body,201).path("planId").asLong());
+                    session.put(PROFILE,preferences,true,200);
+                    session.post("/api/hair-plans/"+savedId+"/close","{}",200);
+                    saved=session.get("/api/hair-plans/"+savedId,200);
+                    var fresh=session.post("/api/hair-plans/preview",schedulePreviewBody(),200);
+                    var one=session.withCsrf(session.request("/api/hair-plans")).header("Content-Type","application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(scheduleBody(fresh,UUID.randomUUID()))).build();
+                    var two=session.withCsrf(session.request("/api/hair-plans")).header("Content-Type","application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(scheduleBody(fresh,UUID.randomUUID()))).build();
+                    var a=session.client.sendAsync(one,HttpResponse.BodyHandlers.ofString());
+                    var b=session.client.sendAsync(two,HttpResponse.BodyHandlers.ofString());
+                    var results=java.util.List.of(a.get(15,TimeUnit.SECONDS),b.get(15,TimeUnit.SECONDS));
+                    assertEquals(1,results.stream().filter(r->r.statusCode()==201).count());
+                    assertEquals(1,results.stream().filter(r->r.statusCode()==409).count());
+                    for(var response:results)if(response.statusCode()==201) session.post("/api/hair-plans/"
+                            +JSON.readTree(response.body()).path("planId").asLong()+"/close","{}",200);
+                    // Completed date, not the old planned date, controls the next interval.
+                    long historicalPlan=jdbc.queryForObject("""
+                            INSERT INTO recurring_plans(account_id,category,start_date,weeks,end_date)
+                            VALUES(?,'HAIR','2026-10-01',12,'2026-12-23') RETURNING id
+                            """,Long.class,owner);
+                    jdbc.update("INSERT INTO recurring_plan_weekdays(plan_id,weekday) VALUES(?,'THURSDAY'),(?,'SUNDAY')",historicalPlan,historicalPlan);
+                    jdbc.update("""
+                            INSERT INTO care_occurrences(account_id,plan_id,category,title,planned_date,status,completed_on,hair_stage)
+                            VALUES(?,?,'HAIR','Synthetic completed care','2026-10-01','COMPLETED','2026-11-25','RECONSTRUCTION')
+                            """,owner,historicalPlan);
+                    jdbc.update("""
+                            INSERT INTO care_occurrences(account_id,plan_id,category,title,planned_date,status,skipped_on,hair_stage)
+                            VALUES(?,?,'HAIR','Synthetic skipped care','2026-11-26','SKIPPED','2026-11-26','RECONSTRUCTION')
+                            """,owner,historicalPlan);
+                    var withHistory=session.post("/api/hair-plans/preview",schedulePreviewBody(),200);
+                    assertTrue(java.util.stream.StreamSupport.stream(withHistory.at("/suggestion/schedule/intervals").spliterator(),false)
+                            .anyMatch(i->i.path("stage").asString().equals("RECONSTRUCTION")&&i.path("lastApplication").asString().equals("2026-11-25")));
+                    for(var occurrence:withHistory.path("occurrences"))if(occurrence.path("stage").asString().equals("RECONSTRUCTION"))
+                        assertFalse(LocalDate.parse(occurrence.path("date").asString()).isBefore(LocalDate.of(2026,12,25)));
+                    other.put(PROFILE,preferences,true,200);
+                    var isolated=other.post("/api/hair-plans/preview",schedulePreviewBody(),200);
+                    assertTrue(java.util.stream.StreamSupport.stream(isolated.path("occurrences").spliterator(),false)
+                            .anyMatch(o->o.path("stage").asString().equals("RECONSTRUCTION")
+                                    && LocalDate.parse(o.path("date").asString()).isBefore(LocalDate.of(2026,12,25))));
+                    // A future reservation also excludes candidates immediately before that reservation.
+                    jdbc.update("UPDATE care_occurrences SET completed_on='2026-10-26' WHERE account_id=? AND status='COMPLETED'",owner);
+                    jdbc.update("""
+                            INSERT INTO care_occurrences(account_id,plan_id,category,title,planned_date,status,hair_stage)
+                            VALUES(?,?,'HAIR','Synthetic reserved care','2026-12-20','PLANNED','RECONSTRUCTION')
+                            """,owner,historicalPlan);
+                    var reserved=session.post("/api/hair-plans/preview",schedulePreviewBody(),200);
+                    for(var occurrence:reserved.path("occurrences"))if(occurrence.path("stage").asString().equals("RECONSTRUCTION")) {
+                        var date=LocalDate.parse(occurrence.path("date").asString());var reservation=LocalDate.of(2026,12,20);
+                        assertTrue(date.isBefore(reservation)?!date.plusMonths(1).isAfter(reservation):!date.isBefore(reservation.plusMonths(1)));
+                    }
+                }
+                try(var app=startSchedule(url)) {
+                    var session=new Session(origin(app));session.login("schedule_one");
+                    assertEquals(saved,session.get("/api/hair-plans/"+savedId,200));
+                }
+            } finally { ddl.execute("DROP SCHEMA "+schema+" CASCADE"); }
+        }
+    }
+
+    private static String schedulePreviewBody() {
+        return "{\"startDate\":\"2026-11-26\",\"weeks\":12,\"weekdays\":[],\"suggestion\":{\"useProfile\":true,\"autoWeekdays\":true}}";
+    }
+
+    private static String scheduleBody(JsonNode preview,UUID id) {
+        return JSON.writeValueAsString(JSON.createObjectNode().put("startDate","2026-11-26").put("weeks",12)
+                .put("requestId",id.toString()).set("weekdays",preview.path("weekdays")).set("occurrences",preview.path("occurrences"))
+                .set("suggestion",JSON.createObjectNode().put("useProfile",true).put("autoWeekdays",true)
+                        .put("sourceRevision",preview.at("/suggestion/schedule/sourceRevision").asString())));
+    }
+
+    private static ConfigurableApplicationContext startSchedule(String url) {
+        return new SpringApplicationBuilder(SelfCareApplication.class,ScheduleClock.class).run("--server.address=127.0.0.1",
+                "--server.port=0","--spring.datasource.url="+url,"--app.hair.profile-enabled=true");
+    }
+
+    @TestConfiguration(proxyBeanMethods=false)
+    static class ScheduleClock {
+        @Bean @Primary Clock scheduleClock() { return Clock.fixed(Instant.parse("2026-11-26T15:00:00Z"),ZoneOffset.UTC); }
+    }
 
     @Test
     void migratesPilotAccountsAndKeepsOptionalProfilePrivateAcrossRestart() throws Exception {

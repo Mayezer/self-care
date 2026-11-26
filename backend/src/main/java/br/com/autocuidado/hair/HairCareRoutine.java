@@ -9,7 +9,14 @@ import java.util.Set;
 import tools.jackson.databind.JsonNode;
 
 public record HairCareRoutine(String modelId, int version, LocalDate reviewedOn, boolean personalized,
-                              String summary, List<Step> steps, List<String> notes) {
+                              String summary, List<Step> steps, List<String> notes,
+                              @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+                              HairScheduleSuggestions.Schedule schedule) {
+
+    public HairCareRoutine withSchedule(HairScheduleSuggestions.Schedule schedule) {
+        return new HairCareRoutine(modelId, 3, LocalDate.of(2026, 11, 26), personalized,
+                summary, steps, notes, schedule);
+    }
 
     public static HairCareRoutine from(JsonNode profile) {
         var groups = new HashSet<String>();
@@ -27,6 +34,7 @@ public record HairCareRoutine(String modelId, int version, LocalDate reviewedOn,
                 || (!"NEVER".equals(heatFrequency) && !profile.path("heatTools").isEmpty());
 
         var reasons = new ArrayList<String>();
+        if (profile.path("careSchedule").path("washesPerWeek").asInt(0) > 0) reasons.add("frequência de lavagem informada");
         if (curly) reasons.add("cachos ou crespos");
         else if (straight) reasons.add("fios lisos");
         if (fine) reasons.add("espessura fina");
@@ -72,7 +80,7 @@ public record HairCareRoutine(String modelId, int version, LocalDate reviewedOn,
         String summary = personalized
                 ? "Rotina adaptada às respostas salvas: " + String.join(", ", reasons) + ". Os cuidados abaixo valem para cada data do seu ciclo."
                 : "Esta é uma rotina geral de cuidados em cada lavagem. Preencha Meu cabelo para adaptar o manuseio, o condicionamento e as orientações à sua rotina.";
-        return new HairCareRoutine("daily-hair-care", 2, LocalDate.of(2026, 11, 23), personalized, summary, List.copyOf(steps), List.copyOf(notes));
+        return new HairCareRoutine("daily-hair-care", 2, LocalDate.of(2026, 11, 23), personalized, summary, List.copyOf(steps), List.copyOf(notes), null);
     }
 
     private static boolean contains(JsonNode profile, String field, String value) {

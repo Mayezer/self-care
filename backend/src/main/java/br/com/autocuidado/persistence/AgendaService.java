@@ -296,6 +296,7 @@ public class AgendaService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public ActionResult act(AccountPrincipal account, long occurrenceId, Action action, LocalDate completedOn) {
+        entityManager.find(Account.class, account.accountId(), LockModeType.PESSIMISTIC_WRITE);
         var occurrence = lockVisibleOccurrence(account, occurrenceId);
         if (occurrence == null) {
             return ActionResult.NOT_FOUND;
@@ -347,6 +348,7 @@ public class AgendaService {
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
     public RescheduleResult reschedule(AccountPrincipal account, long occurrenceId, LocalDate plannedDate) {
+        entityManager.find(Account.class, account.accountId(), LockModeType.PESSIMISTIC_WRITE);
         var occurrence = lockVisibleOccurrence(account, occurrenceId);
         if (occurrence == null) {
             return RescheduleResult.NOT_FOUND;
