@@ -73,6 +73,14 @@ class CredentialStore {
                 """, passwordHash, id);
     }
 
+    void disableMfa(long id) {
+        jdbc.update("""
+                UPDATE accounts SET totp_seed = NULL, totp_last_step = NULL, recovery_digest = NULL,
+                    credential_version = credential_version + 1, reset_digest = NULL, reset_expires_at = NULL
+                WHERE id = ?
+                """, id);
+    }
+
     void recover(long id, String passwordHash, byte[] seed, long step, String recovery) {
         jdbc.update("""
                 UPDATE accounts SET password_hash = ?, totp_seed = ?, totp_last_step = ?, recovery_digest = ?,

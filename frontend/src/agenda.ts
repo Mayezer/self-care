@@ -1,6 +1,7 @@
 import { PageHeading } from './page-heading';
 import { ACCOUNT_TIME_ZONE } from './account-time-zone';
 import { PASSWORD_HINT, PASSWORD_PATTERN } from './password-rules';
+import { MfaSettings } from './mfa-settings';
 import { AccountProfile } from './account-profile';
 import { AccountProfileState, type AccountProfileData } from './account-profile-state';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
@@ -47,7 +48,7 @@ type AuthMode = 'login' | 'register' | 'confirm';
 @Component({
   selector: 'app-agenda',
   imports: [PageHeading, AgendaWeek, HairDiary, HairProfile, HairProducts, History, NewCare, ReminderSettings,
-    SubscriptionSettings, AccountSessions, IdentityFlow, PasswordChange, AccountProfile, Vanity, MakeupCleaning, RouterLink],
+    SubscriptionSettings, AccountSessions, IdentityFlow, PasswordChange, AccountProfile, Vanity, MakeupCleaning, MfaSettings, RouterLink],
   templateUrl: './agenda.html',
 })
 export class Agenda {
@@ -199,6 +200,12 @@ export class Agenda {
   protected passwordReset(): void {
     this.closeIdentity();
     this.notice.set('Senha redefinida. Entre com a nova senha.');
+  }
+
+  protected mfaChanged(state: 'enabled' | 'disabled'): void {
+    this.sessionsEnded(state === 'enabled'
+      ? 'Verificação em duas etapas ativada. Entre com a senha e o código do autenticador.'
+      : 'Verificação em duas etapas desativada. Entre com sua senha.');
   }
 
   protected confirm(email: string, code: HTMLInputElement, password: HTMLInputElement): void {

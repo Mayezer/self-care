@@ -53,6 +53,17 @@ class CredentialOperations {
     }
 
     @Transactional
+    boolean disableMfa(AccountPrincipal account, String verifiedHash, String code) {
+        var row = store.lock(account.accountId()).orElse(null);
+        if (row == null || row.version() != account.credentialVersion() || !row.passwordHash().equals(verifiedHash)
+                || !row.enrolled() || !consumeTotp(row, code, clock.instant())) {
+            return false;
+        }
+        store.disableMfa(row.id());
+        return true;
+    }
+
+    @Transactional
     boolean reset(long id, String resetCode, String factor, String newHash) {
         var row = store.lock(id).orElse(null);
         Instant now = clock.instant();

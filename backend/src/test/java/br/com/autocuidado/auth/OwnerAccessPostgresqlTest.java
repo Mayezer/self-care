@@ -11,6 +11,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.UUID;
@@ -35,6 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -74,6 +76,7 @@ class OwnerAccessPostgresqlTest {
                 jdbc.update("INSERT INTO accounts (username, password_hash, time_zone) VALUES ('legacy_test', ?, 'America/Sao_Paulo')", hash);
                 var origin = "http://127.0.0.1:" + ((WebServerApplicationContext) app).getWebServer().getPort();
                 var inbox = app.getBean(Inbox.class);
+                var clock = app.getBean(AdjustableClock.class);
                 var owner = new BrowserSession(origin);
                 var ordinary = new BrowserSession(origin);
                 var legacy = new BrowserSession(origin);
@@ -84,7 +87,7 @@ class OwnerAccessPostgresqlTest {
                 owner.login(OWNER, 202);
                 owner.get(ADMIN, 401);
                 owner.get("/api/forum/moderation/queue", 401);
-                enroll(owner, inbox, OWNER);
+                byte[] ownerSeed = enroll(owner, inbox, OWNER);
                 owner.get(ADMIN, 204);
 
                 ordinary.post("/api/auth/register", "{\"email\":\"" + OTHER + "\"}", 202);
@@ -92,10 +95,11 @@ class OwnerAccessPostgresqlTest {
                 ordinary.login(OTHER, 401);
                 ordinary.post("/api/auth/confirm", JSON.writeValueAsString(
                         java.util.Map.of("email", OTHER, "code", registrationCode, "password", PASSWORD)), 201);
-                ordinary.login(OTHER, 202);
-                enroll(ordinary, inbox, OTHER);
+                ordinary.login(OTHER, 204);
+                ordinary.get("/api/agenda", 200);
                 ordinary.get(ADMIN, 403);
                 verifiesForumModeration(jdbc, new BrowserSession(origin), owner, ordinary);
+                verifiesOptionalMfa(origin, inbox, clock, owner, ownerSeed, ordinary, jdbc, provisioner);
                 assertFalse(OwnerProvisioning.provision(provisioner, OTHER, hash, true));
                 try (var secondOwner = provisioner.prepareStatement("""
                         INSERT INTO app_owner (account_id) SELECT id FROM accounts WHERE email = ?
@@ -217,11 +221,125 @@ class OwnerAccessPostgresqlTest {
         jdbc.update("UPDATE billing_accounts SET access_until = ?", until.atOffset(ZoneOffset.UTC));
     }
 
-    private static void enroll(BrowserSession session, Inbox inbox, String address) throws Exception {
+    private static void verifiesOptionalMfa(String origin, Inbox inbox, AdjustableClock clock,
+                                            BrowserSession owner, byte[] ownerSeed, BrowserSession ordinary,
+                                            JdbcTemplate jdbc, java.sql.Connection provisioner) throws Exception {
+        String mfa = "/api/auth/mfa";
+        String passwordBody = JSON.writeValueAsString(java.util.Map.of("currentPassword", PASSWORD));
+        var status = ordinary.get(mfa, 200);
+        assertEquals("no-store", status.headers().firstValue("Cache-Control").orElseThrow());
+        assertFalse(JSON.readTree(status.body()).path("enabled").asBoolean());
+        assertFalse(JSON.readTree(status.body()).path("required").asBoolean());
+        new BrowserSession(origin).post(mfa + "/setup", passwordBody, 401);
+        ordinary.postWithoutCsrf(mfa + "/setup", passwordBody, 403);
+        ordinary.post(mfa + "/setup", "{\"currentPassword\":\"wrong\"}", 403);
+
+        var oldSession = new BrowserSession(origin);
+        oldSession.login(OTHER, 204);
+        ordinary.post(mfa + "/setup", passwordBody, 202);
+        var setup = ordinary.post(mfa + "/email/confirm", codeBody(inbox.takeCode(OTHER, 43)), 200);
+        byte[] seed = decodeBase32(setup.path("secret").asString());
+        ordinary.post(mfa + "/activate", codeBody(AuthSecrets.totp(seed, AuthSecrets.step(clock.instant()))), 204);
+        ordinary.get("/api/agenda", 401);
+        oldSession.get("/api/agenda", 401);
+
+        clock.advance(301);
+        ordinary.login(OTHER, 202);
+        ordinary.get("/api/agenda", 401);
+        ordinary.post(mfa + "/setup", passwordBody, 401);
+        ordinary.post(mfa + "/verify", codeBody(AuthSecrets.totp(seed, AuthSecrets.step(clock.instant()))), 204);
+        assertTrue(JSON.readTree(ordinary.get(mfa, 200).body()).path("enabled").asBoolean());
+        ordinary.get(ADMIN, 403);
+        assertTrue(JSON.readTree(owner.get(mfa, 200).body()).path("required").asBoolean());
+        owner.post(mfa + "/disable", JSON.writeValueAsString(java.util.Map.of("currentPassword", PASSWORD,
+                "code", AuthSecrets.totp(ownerSeed, AuthSecrets.step(clock.instant())))), 403);
+        owner.get(ADMIN, 204);
+
+        clock.advance(301);
+        var peer = new BrowserSession(origin);
+        peer.login(OTHER, 202);
+        peer.post(mfa + "/verify", codeBody(AuthSecrets.totp(seed, AuthSecrets.step(clock.instant()))), 204);
+        clock.advance(301);
+        ordinary.post("/api/auth/password/reset/request", "{\"email\":\"" + OTHER + "\"}", 202);
+        String oldReset = inbox.takeCode(OTHER, 43);
+        String resetWithoutFactor = JSON.writeValueAsString(java.util.Map.of(
+                "email", OTHER, "code", oldReset, "password", "Quiet orchard! 12345Cc"));
+        ordinary.post("/api/auth/password/reset/complete", resetWithoutFactor, 400);
+        String factor = AuthSecrets.totp(seed, AuthSecrets.step(clock.instant()));
+        String wrongFactor = factor.equals("000000") ? "111111" : "000000";
+        ordinary.post(mfa + "/disable", JSON.writeValueAsString(java.util.Map.of(
+                "currentPassword", "wrong", "code", factor)), 403);
+        ordinary.post(mfa + "/disable", JSON.writeValueAsString(java.util.Map.of(
+                "currentPassword", PASSWORD, "code", wrongFactor)), 403);
+        ordinary.postWithoutCsrf(mfa + "/disable", passwordBody, 403);
+        ordinary.get("/api/agenda", 200);
+        String disable = JSON.writeValueAsString(java.util.Map.of("currentPassword", PASSWORD, "code", factor));
+        var firstRequest = ordinary.preparePost(mfa + "/disable", disable);
+        var secondRequest = peer.preparePost(mfa + "/disable", disable);
+        long version = jdbc.queryForObject("SELECT credential_version FROM accounts WHERE email = ?", Long.class, OTHER);
+        provisioner.setAutoCommit(false);
+        try (var lock = provisioner.prepareStatement("SELECT id FROM accounts WHERE email = ? FOR UPDATE")) {
+            lock.setString(1, OTHER);
+            try (var rows = lock.executeQuery()) { assertTrue(rows.next()); }
+            var first = ordinary.client.sendAsync(firstRequest, HttpResponse.BodyHandlers.ofString());
+            var second = peer.client.sendAsync(secondRequest, HttpResponse.BodyHandlers.ofString());
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (jdbc.queryForObject("""
+                    SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()
+                        AND wait_event_type = 'Lock' AND query LIKE '%accounts%FOR UPDATE%'
+                    """, Integer.class) < 2) {
+                assertTrue(System.nanoTime() < deadline, "Both independent requests must reach the locked row");
+                Thread.sleep(10);
+            }
+            provisioner.commit();
+            var statuses = java.util.List.of(first.get(10, TimeUnit.SECONDS).statusCode(), second.get(10, TimeUnit.SECONDS).statusCode());
+            assertEquals(1, statuses.stream().filter(code -> code == 204).count());
+            assertTrue(statuses.stream().allMatch(code -> code == 204 || code == 401 || code == 403));
+        } finally {
+            provisioner.rollback();
+            provisioner.setAutoCommit(true);
+        }
+        assertEquals(version + 1, jdbc.queryForObject("SELECT credential_version FROM accounts WHERE email = ?", Long.class, OTHER));
+        ordinary.get("/api/agenda", 401);
+        peer.get("/api/agenda", 401);
+        ordinary.login(OTHER, 204);
+        assertFalse(JSON.readTree(ordinary.get(mfa, 200).body()).path("enabled").asBoolean());
+        ordinary.post("/api/auth/password/reset/complete", resetWithoutFactor, 400);
+
+        clock.advance(301);
+        ordinary.post(mfa + "/setup", passwordBody, 202);
+        var cancelled = ordinary.post(mfa + "/email/confirm", codeBody(inbox.takeCode(OTHER, 43)), 200);
+        assertNotEquals(setup.path("secret").asString(), cancelled.path("secret").asString());
+        assertNotEquals(setup.path("recovery").asString(), cancelled.path("recovery").asString());
+        ordinary.post(mfa + "/cancel", "{}", 204);
+        ordinary.get("/api/agenda", 200);
+        ordinary.post(mfa + "/activate", codeBody(AuthSecrets.totp(
+                decodeBase32(cancelled.path("secret").asString()), AuthSecrets.step(clock.instant()))), 401);
+        assertFalse(JSON.readTree(ordinary.get(mfa, 200).body()).path("enabled").asBoolean());
+
+        clock.advance(301);
+        String changedPassword = "Different meadow! 97531Aa";
+        ordinary.post("/api/auth/password/change", JSON.writeValueAsString(java.util.Map.of(
+                "currentPassword", PASSWORD, "password", changedPassword)), 204);
+        ordinary.login(OTHER, 401);
+        ordinary.login(OTHER, changedPassword, 204);
+        ordinary.get("/api/agenda", 200);
+        ordinary.post("/api/auth/password/reset/request", "{\"email\":\"" + OTHER + "\"}", 202);
+        String reset = inbox.takeCode(OTHER, 43);
+        String recoveredPassword = "Calm valley! 86420Bb";
+        ordinary.post("/api/auth/password/reset/complete", JSON.writeValueAsString(java.util.Map.of(
+                "email", OTHER, "code", reset, "password", recoveredPassword)), 204);
+        ordinary.login(OTHER, recoveredPassword, 204);
+        ordinary.get("/api/agenda", 200);
+        ordinary.get(ADMIN, 403);
+    }
+
+    private static byte[] enroll(BrowserSession session, Inbox inbox, String address) throws Exception {
         session.post("/api/auth/mfa/email", "{\"email\":\"not-the-recipient@example.test\"}", 202);
         var setup = session.post("/api/auth/mfa/email/confirm", codeBody(inbox.takeCode(address, 43)), 200);
         byte[] seed = decodeBase32(setup.path("secret").asString());
         session.post("/api/auth/mfa/activate", codeBody(AuthSecrets.totp(seed, AuthSecrets.step(TIME))), 204);
+        return seed;
     }
 
     private static String codeBody(String code) {
@@ -249,14 +367,23 @@ class OwnerAccessPostgresqlTest {
     static class InboxConfiguration {
         @Bean
         @Primary
-        Clock testClock() {
-            return Clock.fixed(TIME, ZoneOffset.UTC);
+        AdjustableClock testClock() {
+            return new AdjustableClock();
         }
 
         @Bean
         Inbox inbox() {
             return new Inbox();
         }
+    }
+
+    static final class AdjustableClock extends Clock {
+        private volatile Instant now = TIME;
+
+        void advance(long seconds) { now = now.plusSeconds(seconds); }
+        @Override public Instant instant() { return now; }
+        @Override public ZoneId getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(ZoneId zone) { return Clock.fixed(now, zone); }
     }
 
     static final class Inbox implements MailSender {
@@ -292,12 +419,27 @@ class OwnerAccessPostgresqlTest {
         }
 
         void login(String identifier, int expected) throws Exception {
+            login(identifier, PASSWORD, expected);
+        }
+
+        void login(String identifier, String password, int expected) throws Exception {
             post("/api/auth/login", "username=" + URLEncoder.encode(identifier, StandardCharsets.UTF_8)
-                    + "&password=" + URLEncoder.encode(PASSWORD, StandardCharsets.UTF_8), "application/x-www-form-urlencoded", expected);
+                    + "&password=" + URLEncoder.encode(password, StandardCharsets.UTF_8), "application/x-www-form-urlencoded", expected);
+        }
+
+        void postWithoutCsrf(String path, String body, int expected) throws Exception {
+            send(request(path).header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)), expected);
         }
 
         JsonNode post(String path, String body, int expected) throws Exception {
             return post(path, body, "application/json", expected);
+        }
+
+        HttpRequest preparePost(String path, String body) throws Exception {
+            var csrf = JSON.readTree(get("/api/auth/csrf", 200).body());
+            return request(path).header(csrf.path("headerName").asString(), csrf.path("token").asString())
+                    .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build();
         }
 
         private JsonNode post(String path, String body, String type, int expected) throws Exception {

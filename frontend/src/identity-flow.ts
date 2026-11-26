@@ -8,6 +8,12 @@ export interface LoginStep {
   mfa: 'verify' | 'enroll-email';
 }
 
+export interface MfaStatus {
+  enabled: boolean;
+  required: boolean;
+  available: boolean;
+}
+
 type Step = LoginStep['mfa'] | 'enroll-confirm' | 'activate' | 'recover' | 'reset' | 'reset-complete'
   | 'reset-recover' | 'reset-activate';
 
@@ -21,8 +27,17 @@ interface Setup {
   styles: `
     :host { display: grid; gap: var(--space-md); }
     form { margin-top: 0; }
-    code { overflow-wrap: anywhere; user-select: all; }
-    .identity-back { justify-self: start; }
+    :host { min-width: 0; }
+    code { display: block; overflow-wrap: anywhere; user-select: all; font-size: 0.875rem; line-height: 1.7; }
+    .identity-secret { display: grid; gap: 0.5rem; padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--tint-surface); }
+    .identity-secret > p { margin: 0; }
+    .identity-secret > .hint { font-weight: 600; }
+    .identity-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); }
+    .identity-actions > .primary { flex: 1 1 14rem; }
+    .identity-back { justify-self: start; width: auto; min-height: var(--touch); padding: 0.625rem 1rem; font-size: 0.875rem; line-height: 1.4; }
+    .identity-confirmation { display: flex; align-items: flex-start; gap: 0.625rem; min-height: var(--touch); padding-block: 0.5rem; cursor: pointer; font-size: 0.875rem; line-height: 1.6; }
+    .identity-confirmation > input { flex: 0 0 1.25rem; width: 1.25rem; height: 1.25rem; min-height: 0; margin: 0.1rem 0 0; accent-color: var(--accent); }
+    .identity-factor { max-width: 12rem; }
   `,
   template: `
     @switch (step()) {
@@ -35,7 +50,7 @@ interface Setup {
       }
       @case ('enroll-confirm') {
         <h2 #heading tabindex="-1">Confirme o e-mail</h2>
-        <p>Digite o código enviado por e-mail. Ele vale por 10 minutos a partir do início da entrada.</p>
+        <p>Digite o código enviado por e-mail. Esta etapa vale por 10 minutos a partir do início da verificação.</p>
         <form method="post" (submit)="$event.preventDefault(); confirmEnrollmentEmail(code.value)">
           <div class="field">
             <label for="identity-email-code">Código do e-mail</label>
@@ -118,12 +133,18 @@ interface Setup {
     @if (setup(); as current) {
       <h2 #heading tabindex="-1">Adicione a conta ao autenticador</h2>
       <p>No aplicativo autenticador, adicione uma conta por chave de configuração. Selecione códigos baseados em tempo.</p>
-      <p>Chave de configuração <code>{{ current.secret }}</code></p>
+      <div class="identity-secret">
+        <p class="hint">Chave de configuração</p>
+        <code>{{ current.secret }}</code>
+      </div>
       <p id="identity-activate-hint">Depois de adicionar a conta, digite abaixo os 6 dígitos que aparecem no aplicativo autenticador do seu celular.</p>
-      <p>Guarde esta chave de recuperação em local seguro. Ela permite configurar outro autenticador se você perder o acesso ao atual.</p>
-      <p>Chave de recuperação <code>{{ current.recovery }}</code></p>
+      <div class="identity-secret">
+        <p class="hint">Chave de recuperação</p>
+        <code>{{ current.recovery }}</code>
+        <p class="hint">Guarde em local seguro. Use esta chave para configurar outro autenticador se perder o acesso ao atual.</p>
+      </div>
       <form method="post" (submit)="$event.preventDefault(); activate(code.value, $event); code.value = ''">
-        <div class="field">
+        <div class="field identity-factor">
           <label for="identity-activate-code">Código do novo autenticador</label>
           <input #code id="identity-activate-code" name="factor" inputmode="numeric" autocomplete="one-time-code"
                  aria-describedby="identity-activate-hint" required pattern="[0-9]{6}" maxlength="6">
@@ -136,14 +157,22 @@ interface Setup {
             <p class="hint" id="identity-recovery-password-hint">{{ passwordHint }}</p>
           </div>
         }
-        <p><label><input type="checkbox" required> Guardei a chave de recuperação</label></p>
-        <button class="primary" type="submit" [disabled]="pending()">Confirmar configuração</button>
+        <label class="identity-confirmation" for="identity-recovery-saved">
+          <input id="identity-recovery-saved" type="checkbox" required>
+          <span>Guardei a chave de recuperação em local seguro</span>
+        </label>
+        <div class="identity-actions">
+          <button class="primary" type="submit" [disabled]="pending()">Confirmar configuração</button>
+          <button class="secondary identity-back" type="button" [disabled]="pending()" (click)="cancelled.emit()">{{ cancelLabel }}</button>
+        </div>
       </form>
     }
     @if (error(); as message) {
       <p class="field-error" role="alert">{{ message }}</p>
     }
-    <button class="secondary identity-back" type="button" [disabled]="pending()" (click)="cancelled.emit()">Voltar para a entrada</button>
+    @if (!setup()) {
+      <button class="secondary identity-back" type="button" [disabled]="pending()" (click)="cancelled.emit()">{{ cancelLabel }}</button>
+    }
   `,
 })
 export class IdentityFlow {
@@ -153,7 +182,8 @@ export class IdentityFlow {
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly heading = viewChild<ElementRef<HTMLHeadingElement>>('heading');
-  readonly initial = input.required<LoginStep['mfa'] | 'reset'>();
+  readonly initial = input.required<LoginStep['mfa'] | 'reset' | 'enroll-confirm'>();
+  readonly context = input<'login' | 'profile'>('login');
   readonly cancelled = output<void>();
   readonly authenticated = output<void>();
   readonly resetDone = output<void>();
@@ -162,6 +192,10 @@ export class IdentityFlow {
   protected readonly pending = signal(false);
   protected readonly error = signal('');
   protected readonly setup = signal<Setup | null>(null);
+
+  protected get cancelLabel(): string {
+    return this.context() === 'profile' ? 'Cancelar configuração' : 'Voltar para a entrada';
+  }
 
   constructor() {
     this.focusHeading();
@@ -242,7 +276,9 @@ export class IdentityFlow {
         this.pending.set(false);
         this.error.set(error.error?.errors?.password ?? error.error?.errors?.body
           ?? (error.status === 429 ? 'Muitas tentativas. Aguarde alguns minutos.'
-            : error.status === 401 ? 'A verificação expirou. Volte para a entrada.'
+            : error.status === 401 ? (this.context() === 'profile'
+              ? 'Esta configuração expirou. Cancele e tente ativar novamente.'
+              : 'A verificação expirou. Volte para a entrada.')
             : error.status === 409 ? 'Este e-mail está indisponível para esta conta. Volte para a entrada e use outro.'
             : error.status === 400 ? 'Confira os dados e use um código atual do autenticador, se necessário.'
             : 'Não foi possível continuar. Tente novamente.'));

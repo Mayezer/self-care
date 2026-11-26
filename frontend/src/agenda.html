@@ -63,6 +63,7 @@
               </a>
             }
           </section>
+          <app-mfa-settings (changed)="mfaChanged($event)" (sessionExpired)="loadAgenda()" />
           <app-account-sessions (signedOut)="sessionsEnded()" (sessionExpired)="loadAgenda()" />
           <section class="card profile-logout" aria-label="Sair da conta">
             <div><h2>Terminou por agora?</h2><p class="hint">Você pode voltar aos seus cuidados quando quiser.</p></div>
@@ -76,7 +77,7 @@
         <header appPageHeading="lock">
           <p class="eyebrow">Segurança da conta</p>
           <h1 #heading tabindex="-1">Alterar senha</h1>
-          <p>Confirme sua senha atual e um código do autenticador. A troca encerra as sessões da sua conta.</p>
+          <p>Confirme sua senha atual para trocar a senha. A troca encerra as sessões da sua conta.</p>
         </header>
         <section class="card agenda-card" aria-label="Alterar senha da conta">
           <app-password-change (changed)="sessionsEnded('Senha alterada. Entre com a nova senha.')" (sessionExpired)="loadAgenda()" />
