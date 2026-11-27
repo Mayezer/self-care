@@ -1,4 +1,4 @@
-# Ambientes e configuração local
+# Local environments and configuration
 /total_env/
 .env
 .env.*
@@ -29,7 +29,7 @@ credentials/
 *.local.yaml
 *.local.yml
 
-# Chaves, certificados, sessões e dados locais
+# Keys, certificates, sessions, and local data
 *.pem
 *.key
 *.crt
@@ -63,7 +63,7 @@ dump.sql
 /backups/
 /dumps/
 
-# Dependências, saídas de build e relatórios gerados
+# Dependencies, build outputs, and generated reports
 /.gradle/
 /backend/.gradle/
 /backend/build/
@@ -77,19 +77,23 @@ coverage/
 playwright-report/
 test-results/
 
-# Preferências locais do editor e do sistema
+# Local editor and system preferences
 /.vscode/
 .idea/
 *.iml
 .DS_Store
 Thumbs.db
 
-# Documentação e imagens mantidas localmente
-/docs/
+# Documentation is private by default; allow only reviewed public documents
+/docs/*
+!/docs/PROJECT.md
+!/docs/DEVELOPMENT.md
+!/docs/SECURITY.md
+!/docs/LESSONS_LEARNED.md
 
 AGENTS.md
 
-# Publicação: somente fontes estáticas e exemplos sem credenciais
+# Deployment: only source files and examples without credentials
 /deploy/*
 !/deploy/README.md
 !/deploy/release.py

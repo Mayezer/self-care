@@ -1,114 +1,96 @@
 # Self-Care Planner
 
-Agenda de autocuidado is a web app for planning and tracking hair care, skin care, makeup, and nail care. It includes hair care schedules, reminders, and a history of completed care.
+A full-stack web application for planning and tracking hair care, skin care, makeup, and nail care. It brings recurring routines, individual appointments, reminders, and completed-care history into one planner.
 
-Preview a hair care schedule without an account. Sign in to save sessions to your planner, log completed care, and view your history. The app also offers a hair profile, guides, and planner reminders.
+[Open the application](https://agenda-autocuidado.mayezer.com) · [Project documentation](docs/PROJECT.md) · [Development guide](docs/DEVELOPMENT.md) · [Security and configuration](docs/SECURITY.md)
 
-The web interface uses Angular and Nginx in `frontend/`. The API uses Spring Boot and Flyway in `backend/`, with PostgreSQL 18.7. Docker Compose serves the web interface and the API from the same origin.
+The interface is in Brazilian Portuguese. This repository's public documentation is in English.
 
-The app is in pre-release. Products, Web Push, billing, the hair care journal, and the forum are disabled by default in the local environment.
+## The problem
 
-To review the forum in a dedicated local Compose project, set `LOCAL_FORUM_PUBLIC_READING_ENABLED=true` and open `/forum`. The public list, search and direct links show approved content only. Set `LOCAL_FORUM_ENABLED=true` as well to enable participation for accounts with a current subscription confirmed by the server. Subscribers can submit one topic per day in the America/Sao_Paulo time zone. Comments have a separate rate limit. Both enter moderation before they appear publicly. Keep both settings off on the release candidate until reading, participation and the billing integration have passed acceptance.
+Keeping several self-care routines organized means remembering dates, adjusting plans, and tracking what was actually done. Self-Care Planner gives each account a shared agenda across four care categories, with a public hair-schedule preview before registration.
 
-## Run locally with Docker Compose
+The project focuses on personal organization and educational cosmetic-care guidance. Its suggestions do not diagnose conditions or promise treatment results.
 
-With Docker running, copy `.env.example` to `.env` if you do not already have a local environment file. Set `LOCAL_DB_PASSWORD`, `LOCAL_DB_MIGRATION_PASSWORD`, and `LOCAL_DB_RUNTIME_PASSWORD` to three distinct test passwords. Run `openssl rand -hex 32` to generate a dedicated key for `LOCAL_AUTH_MFA_KEY` and keep it unchanged while using the same volume. From the repository root, run:
+## Features and current scope
 
-```sh
-docker compose --profile mail up --build --wait
+The initial pilot is published. The release scope recorded on **November 26, 2026** includes registration with email confirmation, sign-in, the planner, history, private profiles, guides, and in-app reminders.
+
+- Preview a hair schedule without an account; sign in to save it while keeping your edits.
+- Create recurring hair and skin routines and individual skin, makeup, and nail-care appointments.
+- Complete, skip, reschedule, and undo care actions; close a routine while preserving its history.
+- Browse the weekly agenda, upcoming care, overdue items, and history.
+- Save an optional hair profile and request an editable schedule with explanations for each suggested session.
+- Organize a makeup inventory and recurring brush/sponge cleaning reminders.
+- Manage a private account name and photo, change your password, and optionally enable authenticator-based two-factor authentication. The administrative owner must keep it enabled.
+- Use a responsive interface with keyboard navigation, reduced-motion support, and three themes.
+
+Products, browser Web Push, billing, the private hair diary, and the forum have code in the repository but remain disabled in the recorded public release and in the default local configuration. Their presence in the source does not mean they are available to users. See the [module status and requirements](docs/PROJECT.md).
+
+## Architecture
+
+The application uses a client-server architecture with a layered Spring Boot backend organized by domain. The backend is one application, with shared transactions and a PostgreSQL database.
+
+```mermaid
+flowchart LR
+    Browser["Browser: Angular"] -->|"Same-origin requests"| Proxy["Nginx: static files and reverse proxy"]
+    Proxy -->|"/api"| API["Spring Boot: REST API and business rules"]
+    API --> Database[(PostgreSQL)]
 ```
 
-Open the app on port 4222. The frontend proxies `/api/` on the same origin. The API and PostgreSQL are also available on `127.0.0.1` at ports 8102 and 56422, respectively. The `mail` profile starts Mailpit on port 8025, where you can retrieve registration, authenticator setup, and password reset codes for test accounts. [Local app](http://127.0.0.1:4222/) · [Mailpit](http://127.0.0.1:8025/)
+The published topology uses a Cloudflare Worker and Durable Object to manage a container running Nginx and Java, backed by PostgreSQL on Neon. Local development uses Docker Compose. Ownership checks, civil dates, state transitions, and schedule generation stay on the server.
 
-You can configure the ports, database name, and credentials in `.env`. Keep the `postgres-data` volume separate from the pilot environment. If you are reusing an existing volume, keep the database name and administrator credentials and add the two role passwords. The `db-roles` service sets up the dedicated schema and database roles. The `migrate` service runs Flyway as `autocuidado_migration`. The API runs as `autocuidado_runtime`, with read and write access to the application tables. Both setup services exit with code 0 on success.
+| Layer | Technologies |
+|---|---|
+| Frontend | Angular, TypeScript, RxJS, CSS |
+| Backend | Java 25, Spring Boot, Spring Security, Gradle |
+| Persistence | PostgreSQL, Spring Data JPA, Hibernate, Flyway |
+| Local environment | Docker Compose, Nginx, Mailpit |
+| Delivery | GitHub Actions, Cloudflare Workers/Containers, Neon |
+| Verification | JUnit, PostgreSQL integration tests, Vitest, deployment tests, Gitleaks |
 
-To check persistence, generate a preview, verify a test account through Mailpit, sign in, and save the schedule. Run `docker compose --profile mail down`, then `docker compose --profile mail up --wait`. Sign in again and open the saved schedule. Flyway applies pending migrations and validates existing ones each time the migration service runs. Use `down` to preserve the volume during the test.
+Exact versions live in [.java-version](.java-version), [.nvmrc](.nvmrc), [backend/build.gradle](backend/build.gradle), [frontend/package.json](frontend/package.json), and the Dockerfiles. See the [architecture and business rules](docs/PROJECT.md) for module boundaries and consistency decisions.
 
-## Local development
+## Run locally
 
-Use JDK 25.0.4.1 and Node.js 22.23.5, as specified in `.java-version` and `.nvmrc`. The backend uses the Gradle Wrapper. The frontend uses npm with dependency versions locked in `package-lock.json`.
+You need Docker with Compose. Create `.env` from [.env.example](.env.example) if it does not already exist. Set three distinct **local test passwords** in `LOCAL_DB_PASSWORD`, `LOCAL_DB_MIGRATION_PASSWORD`, and `LOCAL_DB_RUNTIME_PASSWORD`. Set `LOCAL_AUTH_MFA_KEY` to a dedicated random 32-byte key encoded as 64 hexadecimal characters, and preserve it while reusing the database volume. Keep these values in the private local file.
 
-Create a local PostgreSQL database and make the application user its owner, with permission to create tables in the `public` schema. At startup, Flyway applies migrations from `backend/src/main/resources/db/migration/` and Hibernate validates the mappings.
-
-In a Bash terminal, enter the connection details and test MFA key before starting the backend. Generate the key with `openssl rand -hex 32` and reuse it for the same database. Adjust the URL if your database uses a different name or port.
-
-```sh
-export SPRING_DATASOURCE_URL=jdbc:postgresql://127.0.0.1:5432/autocuidado
-read -r -p 'PostgreSQL username: ' SPRING_DATASOURCE_USERNAME
-read -r -s -p 'PostgreSQL password: ' SPRING_DATASOURCE_PASSWORD
-printf '\n'
-read -r -s -p 'Local MFA key in hexadecimal: ' APP_AUTH_MFA_KEY
-printf '\n'
-export SPRING_DATASOURCE_USERNAME SPRING_DATASOURCE_PASSWORD APP_AUTH_MFA_KEY
-cd backend
-./gradlew bootRun --args='--server.address=127.0.0.1'
-```
-
-In another terminal, start the frontend:
+From the repository root:
 
 ```sh
-cd frontend
-npm ci
-npm start -- --host 127.0.0.1
+docker compose -p autocuidado-dev --profile mail up --build --wait
 ```
 
-Open the [local app](http://127.0.0.1:4200/). The home screen requests `/api/health` from the same origin. Angular forwards the request to Spring Boot on port 8080.
+Open the [local application](http://127.0.0.1:4222/) and [Mailpit](http://127.0.0.1:8025/). Mailpit captures test registration and recovery emails. Use the same Compose project name for later commands, and select different ports in `.env` if another instance is already running.
 
-## Create a test account and sign in
-
-To send verification, authenticator setup, and recovery codes, set `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, and `APP_AUTH_EMAIL_FROM` before starting the backend. When running the API directly, use `APP_AUTH_MFA_KEY` for the hex-encoded 32-byte key. In development, use a local SMTP server that captures outgoing mail. The `publicacao` profile configures STARTTLS and authentication. Activate `publicacao,cloudflare-mail` to use Cloudflare Email Sending over implicit TLS with a verified sender and `SPRING_MAIL_PASSWORD` provided by the secret store. Keep credentials outside the repository.
-
-1. In the planner (**Agenda**), select **Quero criar uma conta** (Create an account), enter a test email address, and request a code. Copy the code from Mailpit and choose a password of 8–128 characters with an uppercase letter, a lowercase letter, a digit, and a symbol. Spaces alone do not satisfy the symbol requirement. The API applies the same policy when changing or resetting a password and checks the Pwned Passwords service for compromised passwords.
-2. Sign in with your email and password. Ordinary accounts can use the planner without an authenticator.
-3. To enable two-factor authentication, open **Perfil → Verificação em duas etapas**, confirm your current password and the new email code, and add the setup key to a time-based one-time password (TOTP) authenticator app. Save the recovery key and confirm with an authenticator code. Enabling or disabling this protection ends existing sessions. Once enabled, sign-in requires your password and an authenticator code; disabling it requires your current password and a fresh authenticator code. The administrative owner must keep two-factor authentication enabled.
-
-Registration is closed by default in the `publicacao` profile.
-
-## Test the hair care schedule preview (FSD-03A)
-
-With the app running through Compose, send a start date, a duration in weeks, and the selected weekdays to `POST /api/hair-plans/preview`. All accounts use `America/Sao_Paulo`; omitting `timeZone` uses this default, and other zones are rejected. Use port 4200 for the Angular development server. This public endpoint returns a preview without saving the plan.
-
-```sh
-start_date=$(TZ=America/Sao_Paulo date +%F)
-curl -sS http://127.0.0.1:4222/api/hair-plans/preview \
-  -H 'Content-Type: application/json' \
-  --data "{\"startDate\":\"${start_date}\",\"weeks\":2,\"weekdays\":[\"MONDAY\",\"THURSDAY\"],\"timeZone\":\"America/Sao_Paulo\"}"
-```
-
-The HTTP 200 response contains `occurrences`, with each `date` in `YYYY-MM-DD` format and `stage` set to `WASH_ONLY` (Washing and conditioning). Invalid inputs return HTTP 400 with an `errors` object keyed by field name. Use uppercase weekday values from `MONDAY` to `SUNDAY`.
-
-## Resume a preview after signing in (FSD-04C)
-
-Generate a preview, customize a treatment stage, and select **Entrar para salvar na agenda** (Sign in to save to your planner). After you sign in, the form restores the date, duration, weekdays, and stages you selected. The API uses `America/Sao_Paulo` for both public previews and signed-in accounts. If the start date has already passed in São Paulo, adjust it and generate the preview again. The selected stages carry over for dates that appear in both previews.
+The [development guide](docs/DEVELOPMENT.md) covers account creation, MFA, running Java and Angular directly, API examples, persistence checks, optional modules, and troubleshooting.
 
 ## Build and test
 
-- In `backend/`, run `./gradlew clean build` to run the unit and API tests without a database.
-- To verify FSD-04A, run `APP_AUTH_MFA_REQUIRED=false ./gradlew postgresqlTest` in `backend/` with the `SPRING_DATASOURCE_*` variables pointing to an empty PostgreSQL database dedicated to that run. The suite signs in to test accounts using passwords. It applies the migrations, writes test data, verifies the date constraint for each plan, and restarts the app to validate the schema and read the data back. Use a fresh, empty database for each run.
-- In `frontend/`, run `npm ci`, `npm run build`, and `npm test`.
+Run these commands from the indicated directories:
 
-GitHub Actions scans the Git history with Gitleaks, audits npm dependencies, builds Angular and Spring Boot, and runs tests, including integration tests against a disposable PostgreSQL database, simulated Compose deployment and rollback tests using Python's standard library, and Cloudflare origin and lifecycle tests using Node. The manual release workflow uses Docker Compose on a prepared host. The deployment guide also documents the Cloudflare Containers candidate and its remaining provider checks. [CI workflow](.github/workflows/ci.yml) · [Deployment and rollback guide](deploy/README.md)
+```sh
+# backend/
+./gradlew clean build
 
-## Test hair profile persistence (E2-04)
+# frontend/
+npm ci
+npm test
+npm run build
+```
 
-Sign in to the local app with a test account. `GET /api/hair-profile` returns the signed-in account's answers, or `{}` if there are none. `PUT /api/hair-profile` requires the token from `/api/auth/csrf` and replaces all answers with the submitted object. For example, `{"rootOiliness":"RARELY"}` saves only the answer about oily roots, and `{}` clears the profile. An invalid answer returns HTTP 400 with field-level `errors` and leaves the saved profile unchanged. The planner, schedule, and history remain available with an empty profile.
+PostgreSQL integration tests use `./gradlew postgresqlTest` with a fresh, dedicated test database and the connection variables described in the [test instructions](docs/DEVELOPMENT.md#tests).
 
-Compose module settings apply to the entire instance and preserve the database.
+[GitHub Actions](.github/workflows/ci.yml) builds both applications, runs unit/API and PostgreSQL tests, audits npm dependencies, scans Git history for secrets, and tests deployment and rollback decisions. Deployment workflows are manual; updating documentation does not deploy the application.
 
-## Test the private account profile and suggested routine
+## Documentation
 
-In **Perfil**, save an optional name and upload, replace, or remove a JPEG/PNG photo of up to 5 MiB. The server normalizes photos to JPEG with a maximum edge of 512 pixels and strips metadata. Name and photo are private to the signed-in account. **Alterar senha** opens `/perfil/alterar-senha` and keeps the existing password/MFA checks and session revocation.
+| Document | Contents |
+|---|---|
+| [Project](docs/PROJECT.md) | Functional and non-functional requirements, architecture, business rules, and module status |
+| [Development](docs/DEVELOPMENT.md) | Setup, configuration names, test accounts, API examples, and verification commands |
+| [Security](docs/SECURITY.md) | Public/private file boundaries, secret handling, publication checks, and documentation maintenance |
+| [Lessons learned](docs/LESSONS_LEARNED.md) | Selected defects, fixes, measured results, and their limits |
+| [Deployment](deploy/README.md) | Cloudflare and Compose deployment, migrations, rollback, and recovery |
 
-In **Meu cabelo**, optionally save your comfortable number of washes per week, scalp warning signs, and the care you already tolerate or intend to start with known instructions. Include the last application and known intervals in days, weeks, or calendar months. Leave unknown information unanswered; wash-count instructions are not converted to days.
-
-In the planner, select **Receber sugestão** and optionally ask for balanced weekdays. Each date includes a reason and the basic washing routine. Weekly hydration can be offered for reported dryness with known history; nutrition and reconstruction use the intervals you supplied rather than inferring nutrient deficiencies from curl pattern. Missing data, reactions, reservations, and delayed care are explained. Preview and save share the same server scheduler, check the account's completed dates and active reservations, and reject a stale preview after relevant profile or agenda changes. Editing remains available. Saving preserves the versioned instructions, intervals, and original dates; moved sessions show their original suggestion and ask you to review spacing. Old plans and idempotent retries remain readable. Suggestions organize cosmetic care without selecting brands or claiming a clinically validated H/N/R algorithm.
-
-## Test browser notifications (E2-10)
-
-On a test instance, use HTTPS or the local origin `http://127.0.0.1:4222`. Generate a dedicated VAPID P-256 key pair. Set `LOCAL_WEB_PUSH_PUBLIC_KEY` to the 65-byte public point and `LOCAL_WEB_PUSH_PRIVATE_KEY` to the 32-byte private scalar, both encoded as Base64url without padding. Keep the private key in the local environment file. Start Compose with `LOCAL_WEB_PUSH_ENABLED=true` and keep `LOCAL_AGENDA_REMINDERS_ENABLED=true`.
-
-Using a test account, go to **Configurações → Lembretes** (Settings → Reminders) and save a category and a future time in the account's time zone. Schedule a care session in that category and select **Ativar notificações** (Enable notifications) in a supported browser. At the scheduled time, the generic notification should open the planner. Repeat with two subscriptions, deny permission in another browser, and try signing out before the next reminder. Signing in again clears the previous local subscription so you can explicitly enable notifications again.
-
-To suspend delivery in Compose, restart it with `LOCAL_WEB_PUSH_ENABLED=false`. The app uses VAPID to send a request with no payload. The browser looks up the subscription by its opaque address and displays the generic message. An `ACCEPTED` record means the provider accepted the request. The dispatch and retry window closes ten minutes after the scheduled time or at midnight in the local time zone, whichever comes first. [RFC 8030](https://www.rfc-editor.org/rfc/rfc8030) · [RFC 8292](https://www.rfc-editor.org/rfc/rfc8292)
-
-To reconcile delivery attempts, query `web_push_attempts` for `state = 'UNCERTAIN'`. Use the ID, timestamp, and recorded HTTP status, if available, to compare against the provider's records. Keep the attempt in the uncertain state if you cannot confirm the outcome. The automatic queue never retries an uncertain attempt. Keep subscription addresses out of support records.
+Keep these documents aligned with changes to behavior, configuration, migrations, or release scope. Only the named public documents are allowed through `.gitignore`; internal acceptance records and operational evidence stay local. Follow the [documentation update checklist](docs/SECURITY.md#keeping-documentation-current) before publishing changes.
